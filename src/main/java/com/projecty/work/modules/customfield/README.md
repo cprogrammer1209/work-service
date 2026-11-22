@@ -244,6 +244,8 @@ so the JSON round trip is exact: at most 12 digits, DECIMAL at most 6 decimal pl
 | `PUT /{id}` (replaces name, description, sections and placed fields in one go) | `CUSTOM_FIELDS_MANAGE` |
 | `POST /{id}/default`, `/activate`, `/deactivate` | `CUSTOM_FIELDS_MANAGE` |
 
+`PATCH /api/work/projects/{id}` is a partial update: only the properties in the body change (a `null` clears a date, the description or an answer), so a screen can save one field, and the complete Edit form sends them all. Custom values merge by key.
+
 Applying a layout to a project belongs to the project feature: `PUT /api/work/projects/{id}/layout` (`PROJECTS_EDIT` plus the
 usual project edit rule). `POST /projects` takes an optional `layoutId`; the detail response carries the resolved `layout`
 and `hiddenValues`.

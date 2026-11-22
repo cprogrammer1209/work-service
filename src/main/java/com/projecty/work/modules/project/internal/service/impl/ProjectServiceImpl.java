@@ -215,32 +215,61 @@ public class ProjectServiceImpl implements ProjectService {
 		Found found = findVisible(portalId, projectId, caller, true);
 		Project project = found.project();
 		requireCanEdit(project, caller, found.role());
-		requireDates(request.startDate(), request.endDate());
-		UUID ownerId = request.ownerUserId() != null ? request.ownerUserId() : project.getOwnerUserId();
+		// Only what the request carries changes; everything else keeps its stored value.
+		String name = project.getName();
+		if (request.isNameSet()) {
+			name = clean(request.getName());
+			if (name.isEmpty()) {
+				throw invalid("name", ProjectConstants.MESSAGE_NAME_REQUIRED);
+			}
+			if (name.length() > ProjectConstants.NAME_MAX_LENGTH) {
+				throw invalid("name", ProjectConstants.MESSAGE_NAME_TOO_LONG);
+			}
+		}
+		String description = project.getDescription();
+		if (request.isDescriptionSet()) {
+			description = clean(request.getDescription());
+			if (description.length() > ProjectConstants.DESCRIPTION_MAX_LENGTH) {
+				throw invalid("description", ProjectConstants.MESSAGE_DESCRIPTION_TOO_LONG);
+			}
+		}
+		ProjectVisibility visibility = project.getVisibility();
+		if (request.isVisibilitySet()) {
+			if (request.getVisibility() == null) {
+				throw invalid("visibility", ProjectConstants.MESSAGE_VISIBILITY_REQUIRED);
+			}
+			visibility = request.getVisibility();
+		}
+		LocalDate startDate = request.isStartDateSet() ? request.getStartDate() : project.getStartDate();
+		LocalDate endDate = request.isEndDateSet() ? request.getEndDate() : project.getEndDate();
+		requireDates(startDate, endDate);
+		UUID ownerId = request.isOwnerUserIdSet() && request.getOwnerUserId() != null ? request.getOwnerUserId()
+				: project.getOwnerUserId();
 		boolean ownerChanged = !ownerId.equals(project.getOwnerUserId());
 		if (ownerChanged) {
 			requireActivePerson(portalId, ownerId);
 		}
-		String description = clean(request.description());
 		List<String> changes = new ArrayList<>();
-		addIf(changes, "name", !project.getName().equals(request.name().trim()));
-		addIf(changes, "description", !project.getDescription().equals(description));
+		addIf(changes, "name", !project.getName().equals(name));
+		addIf(changes, "description", !Objects.equals(project.getDescription(), description));
 		addIf(changes, "owner", ownerChanged);
-		addIf(changes, "start date", !Objects.equals(project.getStartDate(), request.startDate()));
-		addIf(changes, "end date", !Objects.equals(project.getEndDate(), request.endDate()));
-		addIf(changes, "visibility", project.getVisibility() != request.visibility());
+		addIf(changes, "start date", !Objects.equals(project.getStartDate(), startDate));
+		addIf(changes, "end date", !Objects.equals(project.getEndDate(), endDate));
+		addIf(changes, "visibility", project.getVisibility() != visibility);
+		boolean coreChanged = !changes.isEmpty();
 		// The row is locked, so what we read here is what we replace: concurrent edits queue instead of overwriting.
 		Map<String, Object> before = new HashMap<>(project.getCustomValues());
 		Map<String, Object> after = before;
-		if (request.customValues() != null) {
+		if (request.isCustomValuesSet() && request.getCustomValues() != null) {
 			after = this.customFieldLookUpService.validate(portalId, ProjectConstants.CUSTOM_FIELD_ENTITY,
-					project.getLayoutId(), request.customValues(), before, false);
+					project.getLayoutId(), request.getCustomValues(), before, false);
 			this.customFieldLookUpService.changedKeys(before, after)
 				.forEach((key) -> changes.add("custom field " + key));
 		}
 		Instant now = this.clock.instant();
-		project.edit(request.name().trim(), description, ownerId, request.startDate(), request.endDate(),
-				request.visibility(), now);
+		if (coreChanged) {
+			project.edit(name, description, ownerId, startDate, endDate, visibility, now);
+		}
 		if (after != before) {
 			project.changeCustomValues(after, now);
 			this.customFieldWriteService.reserveUniqueValues(portalId, ProjectConstants.CUSTOM_FIELD_ENTITY,
@@ -452,6 +481,14 @@ public class ProjectServiceImpl implements ProjectService {
 			throw new AppException(HttpStatus.BAD_REQUEST, ProjectConstants.ERROR_PERSON_INVALID,
 					ProjectConstants.MESSAGE_PERSON_INVALID);
 		}
+	}
+
+	/** A field-level validation error: the property name under {@code details}, like bean validation gives. */
+	private static AppException invalid(String property, String message) {
+		Map<String, Object> details = new HashMap<>();
+		details.put(property, message);
+		return new AppException(HttpStatus.BAD_REQUEST, AppConstants.ERROR_VALIDATION_FAILED,
+				AppConstants.MESSAGE_VALIDATION_FAILED, details);
 	}
 
 	private static void requireDates(LocalDate start, LocalDate end) {

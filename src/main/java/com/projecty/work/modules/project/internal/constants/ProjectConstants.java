@@ -89,6 +89,14 @@ public final class ProjectConstants {
 
 	public static final String MESSAGE_LAYOUT_INACTIVE = "That layout is inactive. Choose an active layout.";
 
+	public static final String MESSAGE_NAME_REQUIRED = "Name the project.";
+
+	public static final String MESSAGE_NAME_TOO_LONG = "Use " + NAME_MAX_LENGTH + " characters or fewer.";
+
+	public static final String MESSAGE_DESCRIPTION_TOO_LONG = "Use " + DESCRIPTION_MAX_LENGTH + " characters or fewer.";
+
+	public static final String MESSAGE_VISIBILITY_REQUIRED = "Choose who can see the project.";
+
 	public static final String MESSAGE_PROJECT_NOT_FOUND = "That project does not exist, or you cannot see it.";
 
 	public static final String MESSAGE_FORBIDDEN_EDIT = "Only Admins, the project owner and project Managers can change this project.";

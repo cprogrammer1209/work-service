@@ -85,7 +85,7 @@ public class ProjectController {
 	@PatchMapping("/projects/{projectId}")
 	@RequirePermission(PermissionConstants.PROJECTS_EDIT)
 	public AppResponse<ProjectResponseDTO> update(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID projectId,
-			@Valid @RequestBody ProjectUpdateDTO request) {
+			@RequestBody ProjectUpdateDTO request) {
 		return AppResponse.ok(this.projectService.update(actor(jwt), actorName(jwt), projectId, request));
 	}
 
