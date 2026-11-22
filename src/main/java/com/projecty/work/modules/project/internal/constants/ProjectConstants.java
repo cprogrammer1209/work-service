@@ -85,6 +85,10 @@ public final class ProjectConstants {
 
 	public static final String ERROR_OWNER_LOCKED = "PROJECT_OWNER_LOCKED";
 
+	public static final String ERROR_LAYOUT_INACTIVE = "PROJECT_LAYOUT_INACTIVE";
+
+	public static final String MESSAGE_LAYOUT_INACTIVE = "That layout is inactive. Choose an active layout.";
+
 	public static final String MESSAGE_PROJECT_NOT_FOUND = "That project does not exist, or you cannot see it.";
 
 	public static final String MESSAGE_FORBIDDEN_EDIT = "Only Admins, the project owner and project Managers can change this project.";

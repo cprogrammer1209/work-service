@@ -3,6 +3,7 @@ package com.projecty.work.modules.customfield.internal.constants;
 import java.math.BigDecimal;
 import java.util.EnumSet;
 import java.util.Set;
+import java.util.UUID;
 
 import com.projecty.work.modules.customfield.internal.entity.FieldType;
 
@@ -66,6 +67,55 @@ public final class CustomFieldConstants {
 	public static final String CONFIG_REGEX = "regex";
 
 	public static final String CONFIG_MAX_SELECTIONS = "maxSelections";
+
+	/** CUS-BR-13: layouts per module on the default plan (inactive layouts count). */
+	public static final int LAYOUT_LIMIT = 3;
+
+	public static final int LAYOUT_NAME_MAX_LENGTH = 50;
+
+	public static final int LAYOUT_DESCRIPTION_MAX_LENGTH = 300;
+
+	public static final int SECTION_NAME_MAX_LENGTH = 50;
+
+	/** The layout every portal starts with, and the section its fields start in. */
+	public static final String DEFAULT_LAYOUT_NAME = "Standard";
+
+	public static final String DEFAULT_LAYOUT_DESCRIPTION = "Every field in one section.";
+
+	public static final String DEFAULT_SECTION_NAME = "Details";
+
+	/** Who is recorded as the author of a layout the system creates the first time it is needed. */
+	public static final UUID SYSTEM_ACTOR = new UUID(0L, 0L);
+
+	public static final String ERROR_LAYOUT_NOT_FOUND = "LAYOUT_NOT_FOUND";
+
+	public static final String ERROR_LAYOUT_LIMIT = "LAYOUT_LIMIT";
+
+	public static final String ERROR_LAYOUT_INVALID = "LAYOUT_INVALID";
+
+	public static final String MESSAGE_LAYOUT_NOT_FOUND = "That layout does not exist.";
+
+	public static final String MESSAGE_LAYOUT_LIMIT = "A module can have at most " + LAYOUT_LIMIT
+			+ " layouts. Deactivate one you no longer use, or edit it instead.";
+
+	public static final String MESSAGE_LAYOUT_NAME_TAKEN = "A layout with this name already exists.";
+
+	public static final String MESSAGE_LAYOUT_NAME_REQUIRED = "Name the layout.";
+
+	public static final String MESSAGE_SECTIONS_REQUIRED = "A layout needs at least one section.";
+
+	public static final String MESSAGE_SECTION_NAME_REQUIRED = "Every section needs a name.";
+
+	public static final String MESSAGE_LAYOUT_DEFAULT_INACTIVE = "Make another layout the default first.";
+
+	public static final String MESSAGE_LAYOUT_ACTIVATE_FIRST = "Activate the layout first.";
+
+	public static final String DETAIL_NAME = "name";
+
+	public static final String DETAIL_SECTIONS = "sections";
+
+	/** Fields of these types take the whole row of a form unless a layout says otherwise. */
+	public static final Set<FieldType> WIDE_TYPES = EnumSet.of(FieldType.LONG_TEXT, FieldType.MULTI_PICKLIST);
 
 	public static final String ERROR_FIELD_NOT_FOUND = "CUSTOM_FIELD_NOT_FOUND";
 

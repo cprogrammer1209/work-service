@@ -1,9 +1,9 @@
 # customfield module: custom fields for projects, tasks and other modules
 
-> **Status: built (first release).** The tables `custom_field`, `custom_field_option` and `custom_field_unique_value`
-> and the `custom_values` column on `project` exist (Flyway V3), with the admin endpoints below. Not built yet: the V1
-> tables (field permissions, history, layouts), formula and lookup fields, and the Angular and prototype screens.
-> Tasks will use the same engine when they exist.
+> **Status: built.** The tables `custom_field`, `custom_field_option` and `custom_field_unique_value` and the
+> `custom_values` column on `project` exist (Flyway V3), and so do **layouts** (Flyway V4: `layout`, `layout_section`,
+> `layout_field`, and `project.layout_id`), with the admin endpoints below. Not built yet: field permissions and history,
+> statuses per layout, layout rules, formula and lookup fields. Tasks will use the same engine when they exist.
 
 ## What it is for
 
@@ -104,7 +104,22 @@ The same column goes on `task` and any other module that gets custom fields.
 
 - `custom_field_permission` (`field_id`, `profile_key`, `access`: HIDDEN / READ_ONLY / READ_WRITE)
 - `custom_field_history` (entity, field, old and new value, who, when) for the activity stream
-- `layout`, `layout_section`, `layout_field` (which fields appear where, per-layout overrides)
+
+### Layouts (Flyway V4)
+
+- `layout` (portal, module, name, description, `is_default`, `active`): at most 3 per module (inactive ones count),
+  unique name (any case), exactly one default (partial unique index), never deleted, only deactivated.
+- `layout_section` (layout, name, collapsible, order): at least one per layout, unique name within the layout.
+- `layout_field` (layout, section, field, order, `mandatory`, `read_only`, `default_value` JSONB, `wide`): a field is
+  placed at most once per layout. A null `mandatory` or `wide` means "as the field says"; an override beats the field
+  (CUS-BR-04). A pick-one default is the id of one of the field's active choices; unique, person and pick-several fields
+  take no layout default.
+- `project.layout_id`: the layout a project uses. Fields not placed in it are hidden for that project, but their answers
+  stay in `custom_values` (CUS-BR-10) and come back if the field is placed again or the project moves to a layout that
+  has them.
+- The default layout ("Standard", one section "Details") is created the first time a module needs it, and Flyway V4
+  created it for portals that already had projects or fields. A **new field** is appended to the default layout's last
+  section; a **deleted field** leaves every layout; a **deactivated field** keeps its place but is not shown.
 
 ## Types and how an answer is stored in `custom_values`
 
@@ -218,7 +233,29 @@ so the JSON round trip is exact: at most 12 digits, DECIMAL at most 6 decimal pl
 `CUSTOM_FIELDS_VIEW` (every profile) and `CUSTOM_FIELDS_MANAGE` (Admin) are defined in Platform (`PermissionConstants`,
 `MemberConstants.SYSTEM_PROFILES`, Flyway `V9`) and reach Work through the member events.
 
+### Layout endpoints (`/api/work/layouts`)
+
+| Endpoint | Permission |
+|---|---|
+| `GET ?entityType=PROJECT` (every layout with counts and usage) | `CUSTOM_FIELDS_VIEW` |
+| `GET /active?entityType=PROJECT` (active layouts resolved for drawing a form, default first) | `CUSTOM_FIELDS_VIEW` |
+| `GET /{id}` (as stored, plus every field that could be placed: the builder) | `CUSTOM_FIELDS_MANAGE` |
+| `POST` (blank, or `cloneFromId`) | `CUSTOM_FIELDS_MANAGE` |
+| `PUT /{id}` (replaces name, description, sections and placed fields in one go) | `CUSTOM_FIELDS_MANAGE` |
+| `POST /{id}/default`, `/activate`, `/deactivate` | `CUSTOM_FIELDS_MANAGE` |
+
+Applying a layout to a project belongs to the project feature: `PUT /api/work/projects/{id}/layout` (`PROJECTS_EDIT` plus the
+usual project edit rule). `POST /projects` takes an optional `layoutId`; the detail response carries the resolved `layout`
+and `hiddenValues`.
+
+How validation uses a layout: `CustomFieldLookUpService.validate(portalId, entityType, layoutId, input, existing, creating)`
+checks only the fields placed in the layout. A key outside the layout is refused; the layout's required flag and default
+apply; a read-only field is ignored on create (its default applies) and a change is refused on update.
+
 ## Events (Work's outbox)
+
+`LayoutCreated` and `LayoutUpdated` (also for default, activate and deactivate; payload `change`) go to topic
+`projecty.layout` (aggregate `LAYOUT`); the project module publishes `ProjectLayoutChanged` on `projecty.project`.
 
 `FieldCreated`, `FieldUpdated` (also used for choice changes and for activating a field), `FieldDeactivated`,
 `FieldDeleted`. The aggregate is `FIELD`, so they go to topic `projecty.field` (listed in `projecty.broker.topics`).

@@ -14,6 +14,9 @@ public interface CustomValueHolder {
 	/** How many records of the portal have an answer for the key. */
 	long countUsing(UUID portalId, String apiName);
 
+	/** How many records of the portal use the layout. */
+	long countUsingLayout(UUID portalId, UUID layoutId);
+
 	/** Removes the key from every record of the portal. */
 	void removeKey(UUID portalId, String apiName);
 

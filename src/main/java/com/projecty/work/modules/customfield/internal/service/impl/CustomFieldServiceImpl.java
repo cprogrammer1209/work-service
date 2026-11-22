@@ -35,12 +35,14 @@ import com.projecty.work.modules.customfield.internal.entity.FieldStatus;
 import com.projecty.work.modules.customfield.internal.entity.FieldType;
 import com.projecty.work.modules.customfield.internal.helper.ApiNameGenerator;
 import com.projecty.work.modules.customfield.internal.helper.CustomValueValidator;
+import com.projecty.work.modules.customfield.internal.helper.FieldRule;
 import com.projecty.work.modules.customfield.internal.helper.ValueProblem;
 import com.projecty.work.modules.customfield.internal.mapper.CustomFieldMapper;
 import com.projecty.work.modules.customfield.internal.repository.CustomFieldOptionRepository;
 import com.projecty.work.modules.customfield.internal.repository.CustomFieldRepository;
 import com.projecty.work.modules.customfield.internal.repository.CustomFieldUniqueValueRepository;
 import com.projecty.work.modules.customfield.internal.service.CustomFieldService;
+import com.projecty.work.modules.customfield.internal.service.LayoutService;
 
 import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
@@ -64,6 +66,8 @@ public class CustomFieldServiceImpl implements CustomFieldService {
 
 	private final ApiNameGenerator apiNames;
 
+	private final LayoutService layoutService;
+
 	private final List<CustomValueHolder> holders;
 
 	private final OutboxWriteService outboxWriteService;
@@ -76,7 +80,8 @@ public class CustomFieldServiceImpl implements CustomFieldService {
 
 	public CustomFieldServiceImpl(CustomFieldRepository fieldRepository, CustomFieldOptionRepository optionRepository,
 			CustomFieldUniqueValueRepository uniqueRepository, CustomFieldMapper mapper,
-			CustomValueValidator validator, ApiNameGenerator apiNames, List<CustomValueHolder> holders,
+			CustomValueValidator validator, ApiNameGenerator apiNames, LayoutService layoutService,
+			List<CustomValueHolder> holders,
 			OutboxWriteService outboxWriteService, RequestPortalContext portalContext, ObjectMapper objectMapper,
 			Clock clock) {
 		this.fieldRepository = fieldRepository;
@@ -85,6 +90,7 @@ public class CustomFieldServiceImpl implements CustomFieldService {
 		this.mapper = mapper;
 		this.validator = validator;
 		this.apiNames = apiNames;
+		this.layoutService = layoutService;
 		this.holders = holders;
 		this.outboxWriteService = outboxWriteService;
 		this.portalContext = portalContext;
@@ -102,10 +108,11 @@ public class CustomFieldServiceImpl implements CustomFieldService {
 
 	@Override
 	@Transactional(readOnly = true)
-	public Map<String, Object> validate(UUID portalId, String entityType, Map<String, Object> input,
+	public Map<String, Object> validate(UUID portalId, String entityType, UUID layoutId, Map<String, Object> input,
 			Map<String, Object> existing, boolean creating) {
-		List<CustomField> fields = load(portalId, entityType, EnumSet.of(FieldStatus.ACTIVE));
-		return this.validator.validate(portalId, fields, optionsByField(portalId, fields), input, existing, creating);
+		List<FieldRule> rules = this.layoutService.rulesFor(portalId, entityType, layoutId);
+		List<CustomField> fields = rules.stream().map(FieldRule::field).toList();
+		return this.validator.validate(portalId, rules, optionsByField(portalId, fields), input, existing, creating);
 	}
 
 	@Override
@@ -221,6 +228,8 @@ public class CustomFieldServiceImpl implements CustomFieldService {
 			this.optionRepository.save(new CustomFieldOption(portalId, field.getId(), option.label().trim(),
 					option.color(), position++, option.defaultOption()));
 		}
+		// A new field lands at the end of the default layout's last section; an Admin can move it from the layout builder.
+		this.layoutService.placeNewField(portalId, field);
 		publish(OutboxEventConstants.EVENT_FIELD_CREATED, field, actorId, actorName);
 		return respondOne(portalId, field);
 	}
@@ -292,6 +301,7 @@ public class CustomFieldServiceImpl implements CustomFieldService {
 			.filter((holder) -> holder.entityType().equals(field.getEntityType()))
 			.forEach((holder) -> holder.removeKey(portalId, field.getApiName()));
 		this.uniqueRepository.deleteByPortalIdAndFieldId(portalId, field.getId());
+		this.layoutService.removePlacements(portalId, field.getId());
 		publish(OutboxEventConstants.EVENT_FIELD_DELETED, field, actorId, actorName);
 	}
 

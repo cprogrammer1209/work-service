@@ -31,6 +31,11 @@ public class ProjectCustomValueHolder implements CustomValueHolder {
 	}
 
 	@Override
+	public long countUsingLayout(UUID portalId, UUID layoutId) {
+		return this.projectRepository.countByPortalIdAndLayoutId(portalId, layoutId);
+	}
+
+	@Override
 	public void removeKey(UUID portalId, String apiName) {
 		this.projectRepository.removeCustomKey(portalId, apiName);
 	}

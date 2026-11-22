@@ -26,6 +26,9 @@ public interface ProjectRepository extends JpaRepository<Project, UUID> {
 	@Query("select p from Project p where p.id = :id and p.portalId = :portalId")
 	Optional<Project> lockByIdAndPortalId(@Param("id") UUID id, @Param("portalId") UUID portalId);
 
+	/** Projects in the trash count too: restoring one must find its layout still counted. */
+	long countByPortalIdAndLayoutId(UUID portalId, UUID layoutId);
+
 	@Query(value = "SELECT count(*) FROM project WHERE portal_id = :portalId AND custom_values ->> CAST(:key AS text) IS NOT NULL",
 			nativeQuery = true)
 	long countWithCustomKey(@Param("portalId") UUID portalId, @Param("key") String key);

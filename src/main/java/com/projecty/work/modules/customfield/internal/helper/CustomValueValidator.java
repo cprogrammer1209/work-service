@@ -37,7 +37,7 @@ import tools.jackson.databind.ObjectMapper;
 @Component
 public class CustomValueValidator {
 
-	private static final String UNKNOWN_FIELD = "This field doesn't exist or isn't active.";
+	private static final String UNKNOWN_FIELD = "This field isn't active, or isn't in this record's layout.";
 
 	private final MemberAccessLookUpService accessLookUpService;
 
@@ -49,28 +49,37 @@ public class CustomValueValidator {
 	}
 
 	/**
-	 * @param fields the ACTIVE fields of the module
+	 * @param rules the ACTIVE fields placed in the record's layout, each with that layout's rules
 	 * @param input the keys to set; null or empty clears a key
-	 * @param existing what the record stores now (keys of inactive fields are kept as they are)
-	 * @param creating on create every active mandatory field must have an answer; on update only the keys sent
+	 * @param existing what the record stores now (keys outside the layout are kept as they are)
+	 * @param creating on create every mandatory field must have an answer; on update only the keys sent
 	 * @return the full cleaned map to store
 	 */
-	public Map<String, Object> validate(UUID portalId, List<CustomField> fields,
+	public Map<String, Object> validate(UUID portalId, List<FieldRule> rules,
 			Map<UUID, List<CustomFieldOption>> optionsByField, Map<String, Object> input,
 			Map<String, Object> existing, boolean creating) {
-		Map<String, CustomField> byKey = new LinkedHashMap<>();
-		fields.forEach((field) -> byKey.put(field.getApiName(), field));
+		Map<String, FieldRule> byKey = new LinkedHashMap<>();
+		rules.forEach((rule) -> byKey.put(rule.field().getApiName(), rule));
 		Map<String, Object> problems = new LinkedHashMap<>();
 		Map<String, Object> result = new LinkedHashMap<>(existing);
 		for (Map.Entry<String, Object> entry : input.entrySet()) {
 			String key = entry.getKey();
-			CustomField field = byKey.get(key);
-			if (field == null) {
+			FieldRule rule = byKey.get(key);
+			if (rule == null) {
 				problems.put(key, UNKNOWN_FIELD);
 				continue;
 			}
+			CustomField field = rule.field();
+			List<CustomFieldOption> options = optionsOf(optionsByField, field);
+			if (rule.readOnly()) {
+				// Read-only in this layout: ignored on create (the default applies), a change is refused on update.
+				if (!creating && !sameAnswer(portalId, field, options, entry.getValue(), existing.get(key))) {
+					problems.put(key, field.getLabel() + " is read-only in this layout.");
+				}
+				continue;
+			}
 			if (isEmpty(entry.getValue())) {
-				if (field.isMandatory()) {
+				if (rule.mandatory()) {
 					problems.put(key, field.getLabel() + " is required.");
 				}
 				else {
@@ -79,23 +88,24 @@ public class CustomValueValidator {
 				continue;
 			}
 			try {
-				result.put(key, normalise(portalId, field.getFieldType(), field.getLabel(), field.getConfig(),
-						optionsOf(optionsByField, field), entry.getValue(), existing.get(key)));
+				result.put(key, normalise(portalId, field.getFieldType(), field.getLabel(), field.getConfig(), options,
+						entry.getValue(), existing.get(key)));
 			}
 			catch (ValueProblem problem) {
 				problems.put(key, problem.getMessage());
 			}
 		}
 		if (creating) {
-			for (CustomField field : fields) {
-				if (input.containsKey(field.getApiName())) {
+			for (FieldRule rule : rules) {
+				CustomField field = rule.field();
+				if (input.containsKey(field.getApiName()) && !rule.readOnly()) {
 					continue;
 				}
-				Object fallback = defaultFor(field, optionsOf(optionsByField, field));
+				Object fallback = defaultFor(portalId, rule, optionsOf(optionsByField, field));
 				if (fallback != null) {
 					result.put(field.getApiName(), fallback);
 				}
-				else if (field.isMandatory()) {
+				else if (rule.mandatory() && !rule.readOnly()) {
 					problems.put(field.getApiName(), field.getLabel() + " is required.");
 				}
 			}
@@ -107,8 +117,28 @@ public class CustomValueValidator {
 		return result;
 	}
 
+	/** True when sending {@code sent} for a read-only field would not change what is stored. */
+	private boolean sameAnswer(UUID portalId, CustomField field, List<CustomFieldOption> options, Object sent,
+			Object stored) {
+		if (isEmpty(sent)) {
+			return isEmpty(stored);
+		}
+		try {
+			return sameValue(normalise(portalId, field.getFieldType(), field.getLabel(), field.getConfig(), options,
+					sent, stored), stored);
+		}
+		catch (ValueProblem problem) {
+			return false;
+		}
+	}
+
 	/** The answer a new record gets when none is sent, or null. */
-	private Object defaultFor(CustomField field, List<CustomFieldOption> options) {
+	private Object defaultFor(UUID portalId, FieldRule rule, List<CustomFieldOption> options) {
+		CustomField field = rule.field();
+		if (rule.defaultOverride() != null) {
+			return normalise(portalId, field.getFieldType(), field.getLabel(), field.getConfig(), options,
+					this.objectMapper.readValue(rule.defaultOverride(), Object.class), null);
+		}
 		switch (field.getFieldType()) {
 			case PICKLIST:
 				return options.stream()
@@ -146,6 +176,24 @@ public class CustomValueValidator {
 					: "A user field can't have a default.");
 		}
 		Object value = normalise(null, type, label, config, List.of(), raw, null);
+		return this.objectMapper.writeValueAsString(value);
+	}
+
+	/**
+	 * Checks the default answer a layout gives for one field and returns it as JSON text (null for none). A pick-one
+	 * default is the id of one of the field's active choices.
+	 */
+	public String checkPlacementDefault(CustomField field, List<CustomFieldOption> options, Object raw) {
+		if (isEmpty(raw)) {
+			return null;
+		}
+		if (field.isUniqueField()) {
+			throw new ValueProblem("A unique field can't have a default value.");
+		}
+		if (field.getFieldType() == FieldType.USER || field.getFieldType() == FieldType.MULTI_PICKLIST) {
+			throw new ValueProblem("This field type can't have a default value in a layout.");
+		}
+		Object value = normalise(null, field.getFieldType(), field.getLabel(), field.getConfig(), options, raw, null);
 		return this.objectMapper.writeValueAsString(value);
 	}
 

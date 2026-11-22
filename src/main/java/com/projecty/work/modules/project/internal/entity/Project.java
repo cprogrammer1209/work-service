@@ -55,6 +55,9 @@ public class Project {
 	@JdbcTypeCode(SqlTypes.JSON)
 	private Map<String, Object> customValues = new HashMap<>();
 
+	/** The layout (which custom fields, in which sections) this project uses; see the customfield module. */
+	private UUID layoutId;
+
 	private Instant createdAt;
 
 	private Instant updatedAt;
@@ -64,7 +67,8 @@ public class Project {
 	private UUID deletedByUserId;
 
 	public Project(UUID portalId, String projectKey, String name, String description, UUID ownerUserId,
-			String status, LocalDate startDate, LocalDate endDate, ProjectVisibility visibility, Instant now) {
+			String status, LocalDate startDate, LocalDate endDate, ProjectVisibility visibility, UUID layoutId,
+			Instant now) {
 		this.portalId = portalId;
 		this.projectKey = projectKey;
 		this.name = name;
@@ -74,6 +78,7 @@ public class Project {
 		this.startDate = startDate;
 		this.endDate = endDate;
 		this.visibility = visibility;
+		this.layoutId = layoutId;
 		this.createdAt = now;
 		this.updatedAt = now;
 	}
@@ -91,6 +96,11 @@ public class Project {
 
 	public void changeCustomValues(Map<String, Object> customValues, Instant now) {
 		this.customValues = new HashMap<>(customValues);
+		this.updatedAt = now;
+	}
+
+	public void changeLayout(UUID layoutId, Instant now) {
+		this.layoutId = layoutId;
 		this.updatedAt = now;
 	}
 

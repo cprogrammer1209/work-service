@@ -51,3 +51,4 @@ projecty:
     topics:
       - projecty.project
       - projecty.field
+      - projecty.layout

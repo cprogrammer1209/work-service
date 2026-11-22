@@ -4,6 +4,7 @@ import java.time.Clock;
 import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
+import java.util.Collection;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashMap;
@@ -21,6 +22,9 @@ import com.projecty.work.modules.access.api.MemberAccessLookUpService;
 import com.projecty.work.modules.access.api.dto.MemberAccessResponseDTO;
 import com.projecty.work.modules.customfield.api.CustomFieldLookUpService;
 import com.projecty.work.modules.customfield.api.CustomFieldWriteService;
+import com.projecty.work.modules.customfield.api.dto.LayoutResponseDTO;
+import com.projecty.work.modules.customfield.api.dto.LayoutFieldResponseDTO;
+import com.projecty.work.modules.customfield.api.LayoutLookUpService;
 import com.projecty.work.modules.customfield.api.dto.CustomFieldResponseDTO;
 import com.projecty.work.modules.outbox.api.OutboxWriteService;
 import com.projecty.work.modules.outbox.api.dto.OutboxEventCreateDTO;
@@ -69,6 +73,8 @@ public class ProjectServiceImpl implements ProjectService {
 
 	private final CustomFieldWriteService customFieldWriteService;
 
+	private final LayoutLookUpService layoutLookUpService;
+
 	private final OutboxWriteService outboxWriteService;
 
 	private final RequestPortalContext portalContext;
@@ -80,7 +86,7 @@ public class ProjectServiceImpl implements ProjectService {
 	public ProjectServiceImpl(ProjectRepository projectRepository, ProjectMemberRepository memberRepository,
 			ProjectActivityRepository activityRepository, MemberAccessLookUpService accessLookUpService,
 			CustomFieldLookUpService customFieldLookUpService, CustomFieldWriteService customFieldWriteService,
-			OutboxWriteService outboxWriteService, RequestPortalContext portalContext, ProjectMapper mapper,
+			LayoutLookUpService layoutLookUpService, OutboxWriteService outboxWriteService, RequestPortalContext portalContext, ProjectMapper mapper,
 			Clock clock) {
 		this.projectRepository = projectRepository;
 		this.memberRepository = memberRepository;
@@ -88,6 +94,7 @@ public class ProjectServiceImpl implements ProjectService {
 		this.accessLookUpService = accessLookUpService;
 		this.customFieldLookUpService = customFieldLookUpService;
 		this.customFieldWriteService = customFieldWriteService;
+		this.layoutLookUpService = layoutLookUpService;
 		this.outboxWriteService = outboxWriteService;
 		this.portalContext = portalContext;
 		this.mapper = mapper;
@@ -147,11 +154,19 @@ public class ProjectServiceImpl implements ProjectService {
 			.stream()
 			.map(this.mapper::toActivity)
 			.toList();
+		LayoutResponseDTO layout = this.layoutLookUpService.getLayout(portalId, found.project().getLayoutId());
+		Set<String> placed = layout.sections()
+			.stream()
+			.flatMap((section) -> section.fields().stream())
+			.map(LayoutFieldResponseDTO::apiName)
+			.collect(Collectors.toSet());
+		Set<String> hidden = activeFieldKeys(portalId);
+		hidden.removeAll(placed);
 		return new ProjectDetailResponseDTO(
 				this.mapper.toResponse(found.project(), members.size(), found.role() != null,
 						canEdit(found.project(), caller, found.role()), canDelete(found.project(), caller),
-						activeValues(found.project(), activeFieldKeys(portalId))),
-				memberResponses(found.project(), members), activity);
+						activeValues(found.project(), placed)),
+				memberResponses(found.project(), members), activity, layout, activeValues(found.project(), hidden));
 	}
 
 	@Override
@@ -165,13 +180,16 @@ public class ProjectServiceImpl implements ProjectService {
 		if (this.projectRepository.existsByPortalIdAndProjectKey(portalId, request.key())) {
 			throw keyTaken();
 		}
+		UUID layoutId = request.layoutId() != null ? request.layoutId()
+				: this.layoutLookUpService.getDefaultLayoutId(portalId, ProjectConstants.CUSTOM_FIELD_ENTITY);
+		requireActiveLayout(portalId, layoutId);
 		Map<String, Object> customValues = this.customFieldLookUpService.validate(portalId,
-				ProjectConstants.CUSTOM_FIELD_ENTITY, request.customValues() == null ? Map.of() : request.customValues(),
-				Map.of(), true);
+				ProjectConstants.CUSTOM_FIELD_ENTITY, layoutId,
+				request.customValues() == null ? Map.of() : request.customValues(), Map.of(), true);
 		Instant now = this.clock.instant();
 		Project project = new Project(portalId, request.key(), request.name().trim(), clean(request.description()),
 				ownerId, ProjectConstants.STATUS_DEFAULT, request.startDate(), request.endDate(),
-				request.visibility(), now);
+				request.visibility(), layoutId, now);
 		project.changeCustomValues(customValues, now);
 		try {
 			this.projectRepository.saveAndFlush(project);
@@ -216,7 +234,7 @@ public class ProjectServiceImpl implements ProjectService {
 		Map<String, Object> after = before;
 		if (request.customValues() != null) {
 			after = this.customFieldLookUpService.validate(portalId, ProjectConstants.CUSTOM_FIELD_ENTITY,
-					request.customValues(), before, false);
+					project.getLayoutId(), request.customValues(), before, false);
 			this.customFieldLookUpService.changedKeys(before, after)
 				.forEach((key) -> changes.add("custom field " + key));
 		}
@@ -239,6 +257,26 @@ public class ProjectServiceImpl implements ProjectService {
 					Map.of("changes", changes));
 		}
 		return viewOne(project, caller, found.role(), portalId);
+	}
+
+	@Override
+	@Transactional
+	public ProjectDetailResponseDTO changeLayout(UUID actorId, String actorName, UUID projectId, UUID layoutId) {
+		UUID portalId = this.portalContext.requirePortalId();
+		Caller caller = caller(portalId, actorId);
+		Found found = findVisible(portalId, projectId, caller, true);
+		Project project = found.project();
+		requireCanEdit(project, caller, found.role());
+		if (!project.getLayoutId().equals(layoutId)) {
+			LayoutResponseDTO target = requireActiveLayout(portalId, layoutId);
+			LayoutResponseDTO current = this.layoutLookUpService.getLayout(portalId, project.getLayoutId());
+			project.changeLayout(layoutId, this.clock.instant());
+			record(project, ProjectConstants.ACTION_UPDATED, actorId, actorName, null,
+					"Changed layout (" + current.name() + " → " + target.name() + ")");
+			publish(OutboxEventConstants.EVENT_PROJECT_LAYOUT_CHANGED, project, actorId, actorName,
+					Map.of("fromLayoutId", current.id(), "toLayoutId", target.id()));
+		}
+		return get(actorId, projectId);
 	}
 
 	@Override
@@ -451,6 +489,16 @@ public class ProjectServiceImpl implements ProjectService {
 	}
 
 	/** The api_names of the portal's active project fields: only their answers are ever returned. */
+	/** The layout must be in this portal (else "not found") and active (a project keeps one that is deactivated later). */
+	private LayoutResponseDTO requireActiveLayout(UUID portalId, UUID layoutId) {
+		LayoutResponseDTO layout = this.layoutLookUpService.getLayout(portalId, layoutId);
+		if (!layout.active()) {
+			throw new AppException(HttpStatus.UNPROCESSABLE_CONTENT, ProjectConstants.ERROR_LAYOUT_INACTIVE,
+					ProjectConstants.MESSAGE_LAYOUT_INACTIVE);
+		}
+		return layout;
+	}
+
 	private Set<String> activeFieldKeys(UUID portalId) {
 		return this.customFieldLookUpService.findFields(portalId, ProjectConstants.CUSTOM_FIELD_ENTITY)
 			.stream()
@@ -459,7 +507,7 @@ public class ProjectServiceImpl implements ProjectService {
 	}
 
 	/** Answers of active fields only; keys of inactive or deleted fields are never shown. */
-	private static Map<String, Object> activeValues(Project project, Set<String> activeKeys) {
+	private static Map<String, Object> activeValues(Project project, Collection<String> activeKeys) {
 		Map<String, Object> values = new HashMap<>();
 		project.getCustomValues().forEach((key, value) -> {
 			if (activeKeys.contains(key)) {

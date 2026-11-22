@@ -11,6 +11,7 @@ import com.projecty.work.modules.project.internal.dto.KeyAvailabilityResponseDTO
 import com.projecty.work.modules.project.internal.dto.ProjectCreateDTO;
 import com.projecty.work.modules.project.internal.dto.ProjectDetailResponseDTO;
 import com.projecty.work.modules.project.internal.dto.ProjectIdResponseDTO;
+import com.projecty.work.modules.project.internal.dto.ProjectLayoutUpdateDTO;
 import com.projecty.work.modules.project.internal.dto.ProjectMemberAddDTO;
 import com.projecty.work.modules.project.internal.dto.ProjectMemberResponseDTO;
 import com.projecty.work.modules.project.internal.dto.ProjectResponseDTO;
@@ -28,6 +29,7 @@ import org.springframework.web.bind.annotation.GetMapping;
 import org.springframework.web.bind.annotation.PatchMapping;
 import org.springframework.web.bind.annotation.PathVariable;
 import org.springframework.web.bind.annotation.PostMapping;
+import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestMapping;
 import org.springframework.web.bind.annotation.RequestParam;
@@ -92,6 +94,14 @@ public class ProjectController {
 	public AppResponse<ProjectResponseDTO> changeStatus(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID projectId,
 			@Valid @RequestBody ProjectStatusUpdateDTO request) {
 		return AppResponse.ok(this.projectService.changeStatus(actor(jwt), actorName(jwt), projectId, request.status()));
+	}
+
+	/** The project's own settings: which layout it uses. */
+	@PutMapping("/projects/{projectId}/layout")
+	@RequirePermission(PermissionConstants.PROJECTS_EDIT)
+	public AppResponse<ProjectDetailResponseDTO> changeLayout(@AuthenticationPrincipal Jwt jwt,
+			@PathVariable UUID projectId, @Valid @RequestBody ProjectLayoutUpdateDTO request) {
+		return AppResponse.ok(this.projectService.changeLayout(actor(jwt), actorName(jwt), projectId, request.layoutId()));
 	}
 
 	@DeleteMapping("/projects/{projectId}")

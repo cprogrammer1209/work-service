@@ -31,6 +31,9 @@ public interface ProjectService {
 
 	ProjectResponseDTO changeStatus(UUID actorId, String actorName, UUID projectId, String status);
 
+	/** Applies another layout to the project. Answers for fields the layout does not show are kept. */
+	ProjectDetailResponseDTO changeLayout(UUID actorId, String actorName, UUID projectId, UUID layoutId);
+
 	void trash(UUID actorId, String actorName, UUID projectId);
 
 	ProjectResponseDTO restore(UUID actorId, String actorName, UUID projectId);
