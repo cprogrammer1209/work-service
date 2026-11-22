@@ -50,3 +50,4 @@ projecty:
     partitions: 3
     topics:
       - projecty.project
+      - projecty.field

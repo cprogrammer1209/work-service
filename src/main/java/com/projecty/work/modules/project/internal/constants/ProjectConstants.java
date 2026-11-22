@@ -27,6 +27,9 @@ public final class ProjectConstants {
 	 * Platform profile keys the project rules care about (Admin bypasses project roles; Clients never see public
 	 * projects).
 	 */
+	/** The module name custom fields are defined for (see the customfield module). */
+	public static final String CUSTOM_FIELD_ENTITY = "PROJECT";
+
 	public static final String PROFILE_ADMIN = "ADMIN";
 
 	public static final String PROFILE_CLIENT = "CLIENT";

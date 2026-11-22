@@ -5,6 +5,7 @@ import java.time.Instant;
 import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Comparator;
+import java.util.HashMap;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -18,6 +19,9 @@ import com.projecty.work.common.exception.AppException;
 import com.projecty.work.common.service.RequestPortalContext;
 import com.projecty.work.modules.access.api.MemberAccessLookUpService;
 import com.projecty.work.modules.access.api.dto.MemberAccessResponseDTO;
+import com.projecty.work.modules.customfield.api.CustomFieldLookUpService;
+import com.projecty.work.modules.customfield.api.CustomFieldWriteService;
+import com.projecty.work.modules.customfield.api.dto.CustomFieldResponseDTO;
 import com.projecty.work.modules.outbox.api.OutboxWriteService;
 import com.projecty.work.modules.outbox.api.dto.OutboxEventCreateDTO;
 import com.projecty.work.modules.shared.constants.OutboxEventConstants;
@@ -61,6 +65,10 @@ public class ProjectServiceImpl implements ProjectService {
 
 	private final MemberAccessLookUpService accessLookUpService;
 
+	private final CustomFieldLookUpService customFieldLookUpService;
+
+	private final CustomFieldWriteService customFieldWriteService;
+
 	private final OutboxWriteService outboxWriteService;
 
 	private final RequestPortalContext portalContext;
@@ -71,12 +79,15 @@ public class ProjectServiceImpl implements ProjectService {
 
 	public ProjectServiceImpl(ProjectRepository projectRepository, ProjectMemberRepository memberRepository,
 			ProjectActivityRepository activityRepository, MemberAccessLookUpService accessLookUpService,
+			CustomFieldLookUpService customFieldLookUpService, CustomFieldWriteService customFieldWriteService,
 			OutboxWriteService outboxWriteService, RequestPortalContext portalContext, ProjectMapper mapper,
 			Clock clock) {
 		this.projectRepository = projectRepository;
 		this.memberRepository = memberRepository;
 		this.activityRepository = activityRepository;
 		this.accessLookUpService = accessLookUpService;
+		this.customFieldLookUpService = customFieldLookUpService;
+		this.customFieldWriteService = customFieldWriteService;
 		this.outboxWriteService = outboxWriteService;
 		this.portalContext = portalContext;
 		this.mapper = mapper;
@@ -98,11 +109,12 @@ public class ProjectServiceImpl implements ProjectService {
 		Caller caller = caller(portalId, actorId);
 		Map<UUID, ProjectRole> roles = rolesOf(portalId, actorId);
 		Map<UUID, Integer> counts = memberCounts(portalId);
+		Set<String> activeKeys = activeFieldKeys(portalId);
 		return this.projectRepository.findByPortalIdAndDeletedAtIsNull(portalId)
 			.stream()
 			.filter((project) -> canSee(project, caller, roles.get(project.getId())))
 			.sorted(Comparator.comparing(Project::getName, String.CASE_INSENSITIVE_ORDER))
-			.map((project) -> view(project, caller, roles, counts))
+			.map((project) -> view(project, caller, roles, counts, activeKeys))
 			.toList();
 	}
 
@@ -113,11 +125,12 @@ public class ProjectServiceImpl implements ProjectService {
 		Caller caller = caller(portalId, actorId);
 		Map<UUID, ProjectRole> roles = rolesOf(portalId, actorId);
 		Map<UUID, Integer> counts = memberCounts(portalId);
+		Set<String> activeKeys = activeFieldKeys(portalId);
 		return this.projectRepository.findByPortalIdAndDeletedAtIsNotNull(portalId)
 			.stream()
 			.filter((project) -> canDelete(project, caller))
 			.sorted(Comparator.comparing(Project::getDeletedAt).reversed())
-			.map((project) -> view(project, caller, roles, counts))
+			.map((project) -> view(project, caller, roles, counts, activeKeys))
 			.toList();
 	}
 
@@ -136,7 +149,8 @@ public class ProjectServiceImpl implements ProjectService {
 			.toList();
 		return new ProjectDetailResponseDTO(
 				this.mapper.toResponse(found.project(), members.size(), found.role() != null,
-						canEdit(found.project(), caller, found.role()), canDelete(found.project(), caller)),
+						canEdit(found.project(), caller, found.role()), canDelete(found.project(), caller),
+						activeValues(found.project(), activeFieldKeys(portalId))),
 				memberResponses(found.project(), members), activity);
 	}
 
@@ -151,16 +165,22 @@ public class ProjectServiceImpl implements ProjectService {
 		if (this.projectRepository.existsByPortalIdAndProjectKey(portalId, request.key())) {
 			throw keyTaken();
 		}
+		Map<String, Object> customValues = this.customFieldLookUpService.validate(portalId,
+				ProjectConstants.CUSTOM_FIELD_ENTITY, request.customValues() == null ? Map.of() : request.customValues(),
+				Map.of(), true);
 		Instant now = this.clock.instant();
 		Project project = new Project(portalId, request.key(), request.name().trim(), clean(request.description()),
 				ownerId, ProjectConstants.STATUS_DEFAULT, request.startDate(), request.endDate(),
 				request.visibility(), now);
+		project.changeCustomValues(customValues, now);
 		try {
 			this.projectRepository.saveAndFlush(project);
 		}
 		catch (DataIntegrityViolationException ex) {
 			throw keyTaken();
 		}
+		this.customFieldWriteService.reserveUniqueValues(portalId, ProjectConstants.CUSTOM_FIELD_ENTITY,
+				project.getId(), Map.of(), customValues);
 		// PRJ-BR-05: the owner is always a member with the Manager role.
 		this.memberRepository.save(new ProjectMember(portalId, project.getId(), ownerId, ProjectRole.MANAGER, now));
 		record(project, ProjectConstants.ACTION_CREATED, actorId, actorName, null, "Created project");
@@ -174,7 +194,7 @@ public class ProjectServiceImpl implements ProjectService {
 	public ProjectResponseDTO update(UUID actorId, String actorName, UUID projectId, ProjectUpdateDTO request) {
 		UUID portalId = this.portalContext.requirePortalId();
 		Caller caller = caller(portalId, actorId);
-		Found found = findVisible(portalId, projectId, caller);
+		Found found = findVisible(portalId, projectId, caller, true);
 		Project project = found.project();
 		requireCanEdit(project, caller, found.role());
 		requireDates(request.startDate(), request.endDate());
@@ -191,9 +211,23 @@ public class ProjectServiceImpl implements ProjectService {
 		addIf(changes, "start date", !Objects.equals(project.getStartDate(), request.startDate()));
 		addIf(changes, "end date", !Objects.equals(project.getEndDate(), request.endDate()));
 		addIf(changes, "visibility", project.getVisibility() != request.visibility());
+		// The row is locked, so what we read here is what we replace: concurrent edits queue instead of overwriting.
+		Map<String, Object> before = new HashMap<>(project.getCustomValues());
+		Map<String, Object> after = before;
+		if (request.customValues() != null) {
+			after = this.customFieldLookUpService.validate(portalId, ProjectConstants.CUSTOM_FIELD_ENTITY,
+					request.customValues(), before, false);
+			this.customFieldLookUpService.changedKeys(before, after)
+				.forEach((key) -> changes.add("custom field " + key));
+		}
 		Instant now = this.clock.instant();
 		project.edit(request.name().trim(), description, ownerId, request.startDate(), request.endDate(),
 				request.visibility(), now);
+		if (after != before) {
+			project.changeCustomValues(after, now);
+			this.customFieldWriteService.reserveUniqueValues(portalId, ProjectConstants.CUSTOM_FIELD_ENTITY,
+					project.getId(), before, after);
+		}
 		if (ownerChanged) {
 			// PRJ-BR-05: the new owner is a Manager member; the old owner stays a member.
 			ensureManager(portalId, project.getId(), ownerId, now);
@@ -355,7 +389,13 @@ public class ProjectServiceImpl implements ProjectService {
 
 	/** Another portal's project, a trashed one, or one the caller may not see are all "not found". */
 	private Found findVisible(UUID portalId, UUID projectId, Caller caller) {
-		Project project = this.projectRepository.findByIdAndPortalId(projectId, portalId)
+		return findVisible(portalId, projectId, caller, false);
+	}
+
+	/** With {@code lock}, the project row stays locked until the transaction ends (used by edits). */
+	private Found findVisible(UUID portalId, UUID projectId, Caller caller, boolean lock) {
+		Project project = (lock ? this.projectRepository.lockByIdAndPortalId(projectId, portalId)
+				: this.projectRepository.findByIdAndPortalId(projectId, portalId))
 			.filter((found) -> !found.isTrashed())
 			.orElseThrow(this::notFound);
 		ProjectRole role = roleOf(portalId, projectId, caller.userId());
@@ -404,16 +444,35 @@ public class ProjectServiceImpl implements ProjectService {
 	}
 
 	private ProjectResponseDTO view(Project project, Caller caller, Map<UUID, ProjectRole> roles,
-			Map<UUID, Integer> counts) {
+			Map<UUID, Integer> counts, Set<String> activeKeys) {
 		ProjectRole role = roles.get(project.getId());
 		return this.mapper.toResponse(project, counts.getOrDefault(project.getId(), 0), role != null,
-				canEdit(project, caller, role), canDelete(project, caller));
+				canEdit(project, caller, role), canDelete(project, caller), activeValues(project, activeKeys));
+	}
+
+	/** The api_names of the portal's active project fields: only their answers are ever returned. */
+	private Set<String> activeFieldKeys(UUID portalId) {
+		return this.customFieldLookUpService.findFields(portalId, ProjectConstants.CUSTOM_FIELD_ENTITY)
+			.stream()
+			.map(CustomFieldResponseDTO::apiName)
+			.collect(Collectors.toSet());
+	}
+
+	/** Answers of active fields only; keys of inactive or deleted fields are never shown. */
+	private static Map<String, Object> activeValues(Project project, Set<String> activeKeys) {
+		Map<String, Object> values = new HashMap<>();
+		project.getCustomValues().forEach((key, value) -> {
+			if (activeKeys.contains(key)) {
+				values.put(key, value);
+			}
+		});
+		return values;
 	}
 
 	private ProjectResponseDTO viewOne(Project project, Caller caller, ProjectRole role, UUID portalId) {
 		int count = this.memberRepository.findByPortalIdAndProjectId(portalId, project.getId()).size();
 		return this.mapper.toResponse(project, count, role != null, canEdit(project, caller, role),
-				canDelete(project, caller));
+				canDelete(project, caller), activeValues(project, activeFieldKeys(portalId)));
 	}
 
 	/** Owner first, then Managers, then the rest. */

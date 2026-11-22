@@ -15,6 +15,10 @@ public final class PermissionConstants {
 
 	public static final String PROJECTS_DELETE = "PROJECTS_DELETE";
 
+	public static final String CUSTOM_FIELDS_VIEW = "CUSTOM_FIELDS_VIEW";
+
+	public static final String CUSTOM_FIELDS_MANAGE = "CUSTOM_FIELDS_MANAGE";
+
 	private PermissionConstants() {
 	}
 

@@ -83,8 +83,8 @@ While writing it:
 
 Before finishing, verify:
 ```
-grep -rn "import com.projecty.work.modules.<other>.internal" src/main/java/com/projecty/platform/modules/<module>   → no results
-grep -rln "@Service\|@Component\|@Repository" src/main/java/com/projecty/platform/modules/*/api                 → no results
+grep -rn "import com.projecty.work.modules.<other>.internal" src/main/java/com/projecty/work/modules/<module>   → no results
+grep -rln "@Service\|@Component\|@Repository" src/main/java/com/projecty/work/modules/*/api                 → no results
 grep -rn "@Autowired\|RequiredArgsConstructor" src/main/java                                                     → no results
 ```
 

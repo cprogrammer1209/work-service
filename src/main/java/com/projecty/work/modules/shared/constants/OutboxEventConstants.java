@@ -8,6 +8,8 @@ public final class OutboxEventConstants {
 
 	public static final String AGGREGATE_PROJECT = "PROJECT";
 
+	public static final String AGGREGATE_FIELD = "FIELD";
+
 	public static final String EVENT_PROJECT_CREATED = "ProjectCreated";
 
 	public static final String EVENT_PROJECT_UPDATED = "ProjectUpdated";
@@ -21,6 +23,14 @@ public final class OutboxEventConstants {
 	public static final String EVENT_PROJECT_MEMBER_ADDED = "ProjectMemberAdded";
 
 	public static final String EVENT_PROJECT_MEMBER_REMOVED = "ProjectMemberRemoved";
+
+	public static final String EVENT_FIELD_CREATED = "FieldCreated";
+
+	public static final String EVENT_FIELD_UPDATED = "FieldUpdated";
+
+	public static final String EVENT_FIELD_DEACTIVATED = "FieldDeactivated";
+
+	public static final String EVENT_FIELD_DELETED = "FieldDeleted";
 
 	private OutboxEventConstants() {
 	}
