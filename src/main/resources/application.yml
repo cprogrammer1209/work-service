@@ -1,0 +1,52 @@
+spring:
+  application:
+    name: work-service
+  # Postgres comes from the root compose.yaml (docker compose up -d); this service has its own database.
+  datasource:
+    url: jdbc:postgresql://localhost:5432/work
+    username: projecty
+    password: projecty
+  jpa:
+    open-in-view: false
+    hibernate:
+      ddl-auto: validate
+  kafka:
+    bootstrap-servers: localhost:9092
+    producer:
+      acks: all
+      key-serializer: org.apache.kafka.common.serialization.StringSerializer
+      value-serializer: org.apache.kafka.common.serialization.StringSerializer
+      properties:
+        enable.idempotence: true
+        max.block.ms: 5000
+        request.timeout.ms: 5000
+        delivery.timeout.ms: 10000
+    consumer:
+      group-id: work-service
+      # A new Work database reads all of Platform's member events from the start, including the backfill.
+      auto-offset-reset: earliest
+      key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+      value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
+
+server:
+  port: 8082
+
+projecty:
+  cors:
+    allowed-origins: "http://localhost:4200"
+  token:
+    issuer: http://localhost:8081
+    audience: projecty-api
+    jwk-set-uri: http://localhost:8081/.well-known/jwks.json
+  outbox:
+    poll-interval: 1s
+    batch-size: 100
+    relay-enabled: true
+    retention: 7d
+    purge-interval: 1h
+  broker:
+    type: kafka
+    send-timeout: 5s
+    partitions: 3
+    topics:
+      - projecty.project
