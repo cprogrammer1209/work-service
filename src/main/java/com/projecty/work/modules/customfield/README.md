@@ -3,7 +3,7 @@
 > **Status: built.** The tables `custom_field`, `custom_field_option` and `custom_field_unique_value` and the
 > `custom_values` column on `project` exist (Flyway V3), and so do **layouts** (Flyway V4: `layout`, `layout_section`,
 > `layout_field`, and `project.layout_id`), with the admin endpoints below. Not built yet: field permissions and history,
-> statuses per layout, layout rules, formula and lookup fields. Tasks will use the same engine when they exist.
+> layout rules, formula and lookup fields. Tasks use the same engine (entity type `TASK`, Flyway V5).
 
 ## What it is for
 
@@ -121,6 +121,25 @@ The same column goes on `task` and any other module that gets custom fields.
   created it for portals that already had projects or fields. A **new field** is appended to the default layout's last
   section; a **deleted field** leaves every layout; a **deactivated field** keeps its place but is not shown.
 
+### Task layouts and statuses (Flyway V5)
+
+`TASK` is a supported `entityType` for fields and layouts (default layout "Standard", section "Details", created the first
+time it is needed; at most 3 layouts per module). A TASK layout also owns its **statuses**: table `layout_status`
+(`layout_id`, `name`, `status_type` OPEN or CLOSED, `color`, `sort_order`, `is_default`), seeded with Open (default),
+In Progress (Open) and Closed (Closed) when the layout is created, and copied when it is cloned. Rules: at least one Open
+and one Closed status, exactly one default and it is Open, names unique per layout (any case), at most 20, a status that
+tasks use cannot be deleted or change type (the task module answers through `StatusUsageHolder.countUsingStatus`).
+`LayoutLookUpService.findStatuses/getStatus` and `LayoutResponseDTO.statuses` expose them; the editor view
+(`GET /layouts/{id}`) carries `statuses` too.
+
+| Endpoint (`/api/work/layouts/{layoutId}/statuses`) | Permission |
+|---|---|
+| `GET` | `CUSTOM_FIELDS_VIEW` |
+| `POST` (201), `PATCH /{id}`, `DELETE /{id}`, `PUT /order` (`{ids}`) | `CUSTOM_FIELDS_MANAGE` |
+
+Every call answers with the layout's full status list. `PATCH` takes `name`, `statusType`, `color`, `defaultStatus: true`.
+Project layouts have no statuses (422).
+
 ## Types and how an answer is stored in `custom_values`
 
 | `field_type` | Tier | Stored as |
@@ -175,7 +194,7 @@ public interface CustomFieldLookUpService {
 }
 ```
 The consuming service stores the result on its own row, in the same transaction as the rest of the save.
-Unique fields additionally reserve their value through `CustomFieldWriteService.reserveUniqueValues`, and `changedKeys` tells a module which answers differ. The Project module implements `CustomValueHolder` (`ProjectCustomValueHolder`).
+Unique fields additionally reserve their value through `CustomFieldWriteService.reserveUniqueValues`, and `changedKeys` tells a module which answers differ. The Project and Task modules implement `CustomValueHolder` (`ProjectCustomValueHolder`, `TaskCustomValueHolder`).
 This module never calls the consuming modules.
 
 ## How updating one field works

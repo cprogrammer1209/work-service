@@ -25,7 +25,7 @@ public class ProjectMapper {
 				project.getDescription(), project.getStatus(), project.getStartDate(), project.getEndDate(),
 				project.getVisibility(), project.getOwnerUserId(), memberCount, 0, member, canEdit, canDelete,
 				project.getCreatedAt(), project.getDeletedAt(), project.getDeletedByUserId(), customValues,
-				project.getLayoutId());
+				project.getLayoutId(), project.getTaskLayoutId());
 	}
 
 	public ProjectMemberResponseDTO toMember(ProjectMember member, Project project) {

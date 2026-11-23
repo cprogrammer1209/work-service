@@ -104,6 +104,14 @@ public class ProjectController {
 		return AppResponse.ok(this.projectService.changeLayout(actor(jwt), actorName(jwt), projectId, request.layoutId()));
 	}
 
+	/** Which layout the project's tasks use. */
+	@PutMapping("/projects/{projectId}/task-layout")
+	@RequirePermission(PermissionConstants.PROJECTS_EDIT)
+	public AppResponse<ProjectDetailResponseDTO> changeTaskLayout(@AuthenticationPrincipal Jwt jwt,
+			@PathVariable UUID projectId, @Valid @RequestBody ProjectLayoutUpdateDTO request) {
+		return AppResponse.ok(this.projectService.changeTaskLayout(actor(jwt), actorName(jwt), projectId, request.layoutId()));
+	}
+
 	@DeleteMapping("/projects/{projectId}")
 	@RequirePermission(PermissionConstants.PROJECTS_DELETE)
 	public AppResponse<Void> trash(@AuthenticationPrincipal Jwt jwt, @PathVariable UUID projectId) {

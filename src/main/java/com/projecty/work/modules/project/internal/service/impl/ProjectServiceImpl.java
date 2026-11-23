@@ -11,6 +11,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.stream.Collectors;
@@ -30,6 +31,7 @@ import com.projecty.work.modules.outbox.api.OutboxWriteService;
 import com.projecty.work.modules.outbox.api.dto.OutboxEventCreateDTO;
 import com.projecty.work.modules.shared.constants.OutboxEventConstants;
 import com.projecty.work.modules.shared.constants.PermissionConstants;
+import com.projecty.work.modules.project.api.dto.ProjectSummaryDTO;
 import com.projecty.work.modules.project.internal.constants.ProjectConstants;
 import com.projecty.work.modules.project.internal.dto.KeyAvailabilityResponseDTO;
 import com.projecty.work.modules.project.internal.dto.ProjectActivityResponseDTO;
@@ -182,7 +184,7 @@ public class ProjectServiceImpl implements ProjectService {
 		}
 		UUID layoutId = request.layoutId() != null ? request.layoutId()
 				: this.layoutLookUpService.getDefaultLayoutId(portalId, ProjectConstants.CUSTOM_FIELD_ENTITY);
-		requireActiveLayout(portalId, layoutId);
+		requireActiveLayout(portalId, layoutId, ProjectConstants.CUSTOM_FIELD_ENTITY);
 		Map<String, Object> customValues = this.customFieldLookUpService.validate(portalId,
 				ProjectConstants.CUSTOM_FIELD_ENTITY, layoutId,
 				request.customValues() == null ? Map.of() : request.customValues(), Map.of(), true);
@@ -297,7 +299,7 @@ public class ProjectServiceImpl implements ProjectService {
 		Project project = found.project();
 		requireCanEdit(project, caller, found.role());
 		if (!project.getLayoutId().equals(layoutId)) {
-			LayoutResponseDTO target = requireActiveLayout(portalId, layoutId);
+			LayoutResponseDTO target = requireActiveLayout(portalId, layoutId, ProjectConstants.CUSTOM_FIELD_ENTITY);
 			LayoutResponseDTO current = this.layoutLookUpService.getLayout(portalId, project.getLayoutId());
 			project.changeLayout(layoutId, this.clock.instant());
 			record(project, ProjectConstants.ACTION_UPDATED, actorId, actorName, null,
@@ -306,6 +308,40 @@ public class ProjectServiceImpl implements ProjectService {
 					Map.of("fromLayoutId", current.id(), "toLayoutId", target.id()));
 		}
 		return get(actorId, projectId);
+	}
+
+	@Override
+	@Transactional
+	public ProjectDetailResponseDTO changeTaskLayout(UUID actorId, String actorName, UUID projectId, UUID layoutId) {
+		UUID portalId = this.portalContext.requirePortalId();
+		Caller caller = caller(portalId, actorId);
+		Found found = findVisible(portalId, projectId, caller, true);
+		Project project = found.project();
+		requireCanEdit(project, caller, found.role());
+		LayoutResponseDTO target = requireActiveLayout(portalId, layoutId, ProjectConstants.TASK_LAYOUT_ENTITY);
+		UUID currentId = project.getTaskLayoutId() != null ? project.getTaskLayoutId()
+				: this.layoutLookUpService.getDefaultLayoutId(portalId, ProjectConstants.TASK_LAYOUT_ENTITY);
+		if (!currentId.equals(layoutId)) {
+			LayoutResponseDTO current = this.layoutLookUpService.getLayout(portalId, currentId);
+			project.changeTaskLayout(layoutId, this.clock.instant());
+			record(project, ProjectConstants.ACTION_UPDATED, actorId, actorName, null,
+					"Changed task layout (" + current.name() + " → " + target.name() + ")");
+			publish(OutboxEventConstants.EVENT_PROJECT_LAYOUT_CHANGED, project, actorId, actorName,
+					Map.of("entityType", ProjectConstants.TASK_LAYOUT_ENTITY, "fromLayoutId", current.id(),
+							"toLayoutId", target.id()));
+		}
+		return get(actorId, projectId);
+	}
+
+	@Override
+	@Transactional(readOnly = true)
+	public Optional<ProjectSummaryDTO> findVisibleProject(UUID portalId, UUID projectId, UUID userId) {
+		Caller caller = caller(portalId, userId);
+		return this.projectRepository.findByIdAndPortalId(projectId, portalId)
+			.filter((project) -> !project.isTrashed())
+			.filter((project) -> canSee(project, caller, roleOf(portalId, projectId, userId)))
+			.map((project) -> new ProjectSummaryDTO(project.getId(), project.getProjectKey(), project.getName(),
+					project.getTaskLayoutId()));
 	}
 
 	@Override
@@ -527,8 +563,12 @@ public class ProjectServiceImpl implements ProjectService {
 
 	/** The api_names of the portal's active project fields: only their answers are ever returned. */
 	/** The layout must be in this portal (else "not found") and active (a project keeps one that is deactivated later). */
-	private LayoutResponseDTO requireActiveLayout(UUID portalId, UUID layoutId) {
+	private LayoutResponseDTO requireActiveLayout(UUID portalId, UUID layoutId, String entityType) {
 		LayoutResponseDTO layout = this.layoutLookUpService.getLayout(portalId, layoutId);
+		if (!entityType.equals(layout.entityType())) {
+			throw new AppException(HttpStatus.UNPROCESSABLE_CONTENT, ProjectConstants.ERROR_LAYOUT_INVALID,
+					ProjectConstants.MESSAGE_LAYOUT_WRONG_MODULE);
+		}
 		if (!layout.active()) {
 			throw new AppException(HttpStatus.UNPROCESSABLE_CONTENT, ProjectConstants.ERROR_LAYOUT_INACTIVE,
 					ProjectConstants.MESSAGE_LAYOUT_INACTIVE);

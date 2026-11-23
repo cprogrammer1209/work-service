@@ -87,6 +87,13 @@ public final class ProjectConstants {
 
 	public static final String ERROR_LAYOUT_INACTIVE = "PROJECT_LAYOUT_INACTIVE";
 
+	public static final String ERROR_LAYOUT_INVALID = "PROJECT_LAYOUT_INVALID";
+
+	public static final String MESSAGE_LAYOUT_WRONG_MODULE = "That layout is for another module.";
+
+	/** The module name task layouts and task custom fields are defined for. */
+	public static final String TASK_LAYOUT_ENTITY = "TASK";
+
 	public static final String MESSAGE_LAYOUT_INACTIVE = "That layout is inactive. Choose an active layout.";
 
 	public static final String MESSAGE_NAME_REQUIRED = "Name the project.";

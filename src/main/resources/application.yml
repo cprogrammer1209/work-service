@@ -52,3 +52,5 @@ projecty:
       - projecty.project
       - projecty.field
       - projecty.layout
+      - projecty.task
+      - projecty.tasklist

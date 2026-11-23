@@ -12,6 +12,10 @@ public final class OutboxEventConstants {
 
 	public static final String AGGREGATE_LAYOUT = "LAYOUT";
 
+	public static final String AGGREGATE_TASK = "TASK";
+
+	public static final String AGGREGATE_TASK_LIST = "TASKLIST";
+
 	public static final String EVENT_PROJECT_CREATED = "ProjectCreated";
 
 	public static final String EVENT_PROJECT_UPDATED = "ProjectUpdated";
@@ -27,6 +31,32 @@ public final class OutboxEventConstants {
 	public static final String EVENT_PROJECT_MEMBER_REMOVED = "ProjectMemberRemoved";
 
 	public static final String EVENT_PROJECT_LAYOUT_CHANGED = "ProjectLayoutChanged";
+
+	public static final String EVENT_TASK_CREATED = "TaskCreated";
+
+	public static final String EVENT_TASK_UPDATED = "TaskUpdated";
+
+	public static final String EVENT_TASK_STATUS_CHANGED = "TaskStatusChanged";
+
+	public static final String EVENT_TASK_CLOSED = "TaskClosed";
+
+	public static final String EVENT_TASK_REOPENED = "TaskReopened";
+
+	public static final String EVENT_TASK_TRASHED = "TaskTrashed";
+
+	public static final String EVENT_TASK_RESTORED = "TaskRestored";
+
+	public static final String EVENT_TASK_COMMENT_ADDED = "TaskCommentAdded";
+
+	public static final String EVENT_TASK_COMMENT_UPDATED = "TaskCommentUpdated";
+
+	public static final String EVENT_TASK_COMMENT_DELETED = "TaskCommentDeleted";
+
+	public static final String EVENT_TASK_LIST_CREATED = "TaskListCreated";
+
+	public static final String EVENT_TASK_LIST_UPDATED = "TaskListUpdated";
+
+	public static final String EVENT_TASK_LIST_ARCHIVED = "TaskListArchived";
 
 	public static final String EVENT_LAYOUT_CREATED = "LayoutCreated";
 

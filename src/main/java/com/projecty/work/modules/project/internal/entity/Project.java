@@ -58,6 +58,9 @@ public class Project {
 	/** The layout (which custom fields, in which sections) this project uses; see the customfield module. */
 	private UUID layoutId;
 
+	/** The layout the project's tasks use; null means the portal's default TASK layout. */
+	private UUID taskLayoutId;
+
 	private Instant createdAt;
 
 	private Instant updatedAt;
@@ -101,6 +104,11 @@ public class Project {
 
 	public void changeLayout(UUID layoutId, Instant now) {
 		this.layoutId = layoutId;
+		this.updatedAt = now;
+	}
+
+	public void changeTaskLayout(UUID taskLayoutId, Instant now) {
+		this.taskLayoutId = taskLayoutId;
 		this.updatedAt = now;
 	}
 

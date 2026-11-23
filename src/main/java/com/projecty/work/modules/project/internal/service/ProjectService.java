@@ -3,6 +3,7 @@ package com.projecty.work.modules.project.internal.service;
 import java.util.List;
 import java.util.UUID;
 
+import com.projecty.work.modules.project.api.ProjectLookUpService;
 import com.projecty.work.modules.project.internal.dto.KeyAvailabilityResponseDTO;
 import com.projecty.work.modules.project.internal.dto.ProjectCreateDTO;
 import com.projecty.work.modules.project.internal.dto.ProjectDetailResponseDTO;
@@ -17,7 +18,7 @@ import com.projecty.work.modules.project.internal.dto.ProjectUpdateDTO;
  * Projects of the request's portal (X-Portal-Id). Every method takes the caller; what the caller may see or change
  * depends on their profile and their role in the project.
  */
-public interface ProjectService {
+public interface ProjectService extends ProjectLookUpService {
 
 	List<ProjectResponseDTO> list(UUID actorId);
 
@@ -33,6 +34,9 @@ public interface ProjectService {
 
 	/** Applies another layout to the project. Answers for fields the layout does not show are kept. */
 	ProjectDetailResponseDTO changeLayout(UUID actorId, String actorName, UUID projectId, UUID layoutId);
+
+	/** Applies another layout to the project's tasks; null on a project means the default TASK layout. */
+	ProjectDetailResponseDTO changeTaskLayout(UUID actorId, String actorName, UUID projectId, UUID layoutId);
 
 	void trash(UUID actorId, String actorName, UUID projectId);
 

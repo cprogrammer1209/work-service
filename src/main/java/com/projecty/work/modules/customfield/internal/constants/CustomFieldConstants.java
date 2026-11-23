@@ -2,10 +2,12 @@ package com.projecty.work.modules.customfield.internal.constants;
 
 import java.math.BigDecimal;
 import java.util.EnumSet;
+import java.util.List;
 import java.util.Set;
 import java.util.UUID;
 
 import com.projecty.work.modules.customfield.internal.entity.FieldType;
+import com.projecty.work.modules.customfield.internal.entity.LayoutStatusType;
 
 /**
  * Constants of the customfield module: limits, config keys, error codes and messages.
@@ -16,10 +18,12 @@ public final class CustomFieldConstants {
 	public static final Set<FieldType> UNIQUE_TYPES = EnumSet.of(FieldType.TEXT, FieldType.NUMBER, FieldType.DECIMAL,
 			FieldType.DATE);
 
-	/** The modules that can have custom fields today. Tasks and others are added here when they exist. */
+	/** The modules that can have custom fields today. Others are added here when they exist. */
 	public static final String ENTITY_PROJECT = "PROJECT";
 
-	public static final Set<String> ENTITY_TYPES = Set.of(ENTITY_PROJECT);
+	public static final String ENTITY_TASK = "TASK";
+
+	public static final Set<String> ENTITY_TYPES = Set.of(ENTITY_PROJECT, ENTITY_TASK);
 
 	/** The key of an answer is this prefix plus the label in snake_case, e.g. cf_customer_tier. */
 	public static final String KEY_PREFIX = "cf_";
@@ -87,6 +91,63 @@ public final class CustomFieldConstants {
 	/** Who is recorded as the author of a layout the system creates the first time it is needed. */
 	public static final UUID SYSTEM_ACTOR = new UUID(0L, 0L);
 
+	public static final int STATUS_NAME_MAX_LENGTH = 30;
+
+	public static final int STATUS_COLOR_MAX_LENGTH = 20;
+
+	public static final int STATUS_LIMIT = 20;
+
+	/** The statuses a new TASK layout starts with: name, type, color. The first one is the default. */
+	public static final List<DefaultStatus> DEFAULT_STATUSES = List.of(
+			new DefaultStatus("Open", LayoutStatusType.OPEN, "#2563eb"),
+			new DefaultStatus("In Progress", LayoutStatusType.OPEN, "#d97706"),
+			new DefaultStatus("Closed", LayoutStatusType.CLOSED, "#16a34a"));
+
+	public static final String ERROR_STATUS_NOT_FOUND = "LAYOUT_STATUS_NOT_FOUND";
+
+	public static final String ERROR_STATUS_INVALID = "LAYOUT_STATUS_INVALID";
+
+	public static final String ERROR_STATUS_IN_USE = "LAYOUT_STATUS_IN_USE";
+
+	public static final String ERROR_STATUS_LIMIT = "LAYOUT_STATUS_LIMIT";
+
+	public static final String MESSAGE_STATUS_NOT_FOUND = "That status does not exist.";
+
+	public static final String MESSAGE_STATUSES_UNSUPPORTED = "Only task layouts have statuses.";
+
+	public static final String MESSAGE_STATUS_LIMIT = "A layout can have at most " + STATUS_LIMIT + " statuses.";
+
+	public static final String MESSAGE_STATUS_NAME_REQUIRED = "Name the status.";
+
+	public static final String MESSAGE_STATUS_NAME_TAKEN = "A status with this name already exists.";
+
+	public static final String MESSAGE_STATUS_TYPE_REQUIRED = "Choose Open or Closed.";
+
+	public static final String MESSAGE_STATUS_COLOR_TOO_LONG = "Use " + STATUS_COLOR_MAX_LENGTH
+			+ " characters or fewer.";
+
+	public static final String MESSAGE_STATUS_DEFAULT_OPEN = "The default status must be an Open one.";
+
+	public static final String MESSAGE_STATUS_DEFAULT_UNSET = "Make another status the default first.";
+
+	public static final String MESSAGE_STATUS_LAST_OF_TYPE = "A layout needs at least one Open and one Closed status.";
+
+	public static final String MESSAGE_STATUS_IN_USE = "Tasks use this status. Move them to another status first.";
+
+	public static final String MESSAGE_STATUS_TYPE_IN_USE = "Tasks use this status, so its type cannot change.";
+
+	public static final String MESSAGE_STATUS_ORDER_INVALID = "List each status of the layout once.";
+
+	public static final String DETAIL_STATUS_NAME = "name";
+
+	public static final String DETAIL_STATUS_TYPE = "statusType";
+
+	public static final String DETAIL_STATUS_COLOR = "color";
+
+	public static final String DETAIL_STATUS_DEFAULT = "defaultStatus";
+
+	public static final String DETAIL_STATUS_IDS = "ids";
+
 	public static final String ERROR_LAYOUT_NOT_FOUND = "LAYOUT_NOT_FOUND";
 
 	public static final String ERROR_LAYOUT_LIMIT = "LAYOUT_LIMIT";
@@ -148,6 +209,10 @@ public final class CustomFieldConstants {
 	public static final String DETAIL_UNIQUE = "unique";
 
 	public static final String DETAIL_DEFAULT = "defaultValue";
+
+	/** @param name the status name @param type OPEN or CLOSED @param color a CSS color for the chip */
+	public record DefaultStatus(String name, LayoutStatusType type, String color) {
+	}
 
 	private CustomFieldConstants() {
 	}

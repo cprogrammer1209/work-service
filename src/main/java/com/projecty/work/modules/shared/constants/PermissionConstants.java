@@ -19,6 +19,14 @@ public final class PermissionConstants {
 
 	public static final String CUSTOM_FIELDS_MANAGE = "CUSTOM_FIELDS_MANAGE";
 
+	public static final String TASKS_VIEW = "TASKS_VIEW";
+
+	public static final String TASKS_CREATE = "TASKS_CREATE";
+
+	public static final String TASKS_EDIT = "TASKS_EDIT";
+
+	public static final String TASKS_DELETE = "TASKS_DELETE";
+
 	private PermissionConstants() {
 	}
 

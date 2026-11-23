@@ -23,6 +23,7 @@ import com.projecty.work.modules.customfield.api.CustomValueHolder;
 import com.projecty.work.modules.customfield.api.dto.LayoutFieldResponseDTO;
 import com.projecty.work.modules.customfield.api.dto.LayoutResponseDTO;
 import com.projecty.work.modules.customfield.api.dto.LayoutSectionResponseDTO;
+import com.projecty.work.modules.customfield.api.dto.LayoutStatusResponseDTO;
 import com.projecty.work.modules.customfield.internal.constants.CustomFieldConstants;
 import com.projecty.work.modules.customfield.internal.dto.LayoutCreateDTO;
 import com.projecty.work.modules.customfield.internal.dto.LayoutEditorResponseDTO;
@@ -36,6 +37,8 @@ import com.projecty.work.modules.customfield.internal.entity.CustomField;
 import com.projecty.work.modules.customfield.internal.entity.CustomFieldOption;
 import com.projecty.work.modules.customfield.internal.entity.FieldStatus;
 import com.projecty.work.modules.customfield.internal.entity.Layout;
+import com.projecty.work.modules.customfield.internal.helper.LayoutStatusSeeder;
+import com.projecty.work.modules.customfield.internal.repository.LayoutStatusRepository;
 import com.projecty.work.modules.customfield.internal.entity.LayoutField;
 import com.projecty.work.modules.customfield.internal.entity.LayoutSection;
 import com.projecty.work.modules.customfield.internal.helper.FieldRule;
@@ -77,6 +80,10 @@ public class LayoutServiceImpl implements LayoutService {
 
 	private final CustomValueValidator validator;
 
+	private final LayoutStatusRepository statusRepository;
+
+	private final LayoutStatusSeeder statusSeeder;
+
 	private final List<CustomValueHolder> holders;
 
 	private final OutboxWriteService outboxWriteService;
@@ -88,7 +95,8 @@ public class LayoutServiceImpl implements LayoutService {
 	public LayoutServiceImpl(LayoutRepository layoutRepository, LayoutSectionRepository sectionRepository,
 			LayoutFieldRepository placementRepository, CustomFieldRepository fieldRepository,
 			CustomFieldOptionRepository optionRepository, CustomFieldMapper fieldMapper, LayoutMapper layoutMapper,
-			CustomValueValidator validator, List<CustomValueHolder> holders, OutboxWriteService outboxWriteService,
+			CustomValueValidator validator, LayoutStatusRepository statusRepository,
+			LayoutStatusSeeder statusSeeder, List<CustomValueHolder> holders, OutboxWriteService outboxWriteService,
 			RequestPortalContext portalContext, Clock clock) {
 		this.layoutRepository = layoutRepository;
 		this.sectionRepository = sectionRepository;
@@ -98,6 +106,8 @@ public class LayoutServiceImpl implements LayoutService {
 		this.fieldMapper = fieldMapper;
 		this.layoutMapper = layoutMapper;
 		this.validator = validator;
+		this.statusRepository = statusRepository;
+		this.statusSeeder = statusSeeder;
 		this.holders = holders;
 		this.outboxWriteService = outboxWriteService;
 		this.portalContext = portalContext;
@@ -136,6 +146,23 @@ public class LayoutServiceImpl implements LayoutService {
 	@Transactional
 	public UUID getDefaultLayoutId(UUID portalId, String entityType) {
 		return ensureDefault(portalId, entityType).getId();
+	}
+
+	@Override
+	@Transactional(readOnly = true)
+	public List<LayoutStatusResponseDTO> findStatuses(UUID portalId, UUID layoutId) {
+		Layout layout = requireLayout(portalId, layoutId);
+		return statusesOf(layout);
+	}
+
+	@Override
+	@Transactional(readOnly = true)
+	public LayoutStatusResponseDTO getStatus(UUID portalId, UUID layoutId, UUID statusId) {
+		requireLayout(portalId, layoutId);
+		return this.statusRepository.findByIdAndPortalIdAndLayoutId(statusId, portalId, layoutId)
+			.map(this.layoutMapper::toStatus)
+			.orElseThrow(() -> new AppException(HttpStatus.NOT_FOUND, CustomFieldConstants.ERROR_STATUS_NOT_FOUND,
+					CustomFieldConstants.MESSAGE_STATUS_NOT_FOUND));
 	}
 
 	/* ---------- what the admin screens use ---------- */
@@ -190,6 +217,14 @@ public class LayoutServiceImpl implements LayoutService {
 		}
 		else {
 			copySections(portalId, source, layout);
+		}
+		if (CustomFieldConstants.ENTITY_TASK.equals(entityType)) {
+			if (source == null) {
+				this.statusSeeder.seedDefaults(portalId, layout.getId());
+			}
+			else {
+				this.statusSeeder.copy(portalId, source.getId(), layout.getId());
+			}
 		}
 		publish(OutboxEventConstants.EVENT_LAYOUT_CREATED, layout, actorId, actorName, "created");
 		return summary(layout, load(portalId, List.of(layout)));
@@ -381,6 +416,9 @@ public class LayoutServiceImpl implements LayoutService {
 			this.placementRepository.save(new LayoutField(portalId, layout.getId(), section.getId(), field.getId(),
 					position++, null, false, null, null));
 		}
+		if (CustomFieldConstants.ENTITY_TASK.equals(entityType)) {
+			this.statusSeeder.seedDefaults(portalId, layout.getId());
+		}
 		publish(OutboxEventConstants.EVENT_LAYOUT_CREATED, layout, CustomFieldConstants.SYSTEM_ACTOR, "System", "created");
 		return layout;
 	}
@@ -454,7 +492,7 @@ public class LayoutServiceImpl implements LayoutService {
 			sections.add(new LayoutSectionResponseDTO(section.getId(), section.getName(), section.isCollapsible(), fields));
 		}
 		return new LayoutResponseDTO(layout.getId(), layout.getEntityType(), layout.getName(), layout.getDescription(),
-				layout.isDefaultLayout(), layout.isActive(), sections);
+				layout.isDefaultLayout(), layout.isActive(), sections, statusesOf(layout));
 	}
 
 	private LayoutSummaryResponseDTO summary(Layout layout, Graph graph) {
@@ -497,7 +535,20 @@ public class LayoutServiceImpl implements LayoutService {
 		Map<UUID, List<CustomFieldOption>> options = optionsByField(portalId, live);
 		return new LayoutEditorResponseDTO(layout.getId(), layout.getEntityType(), layout.getName(),
 				layout.getDescription(), layout.isDefaultLayout(), layout.isActive(), usage(layout), sections,
-				live.stream().map((field) -> this.fieldMapper.toResponse(field, options.getOrDefault(field.getId(), List.of()))).toList());
+				live.stream().map((field) -> this.fieldMapper.toResponse(field, options.getOrDefault(field.getId(), List.of()))).toList(),
+				statusesOf(layout));
+	}
+
+	/** Only TASK layouts have statuses. */
+	private List<LayoutStatusResponseDTO> statusesOf(Layout layout) {
+		if (!CustomFieldConstants.ENTITY_TASK.equals(layout.getEntityType())) {
+			return List.of();
+		}
+		return this.statusRepository
+			.findByPortalIdAndLayoutIdOrderBySortOrderAscIdAsc(layout.getPortalId(), layout.getId())
+			.stream()
+			.map(this.layoutMapper::toStatus)
+			.toList();
 	}
 
 	/** Another portal's layout is "not found" too. */
