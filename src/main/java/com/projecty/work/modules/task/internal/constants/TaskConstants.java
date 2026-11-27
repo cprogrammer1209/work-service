@@ -1,5 +1,7 @@
 package com.projecty.work.modules.task.internal.constants;
 
+import java.time.Duration;
+
 /**
  * Constants of the task module: limits, error codes, messages, detail keys and activity names.
  */
@@ -246,6 +248,18 @@ public final class TaskConstants {
 	public static final String MESSAGE_COMMENT_REQUIRED = "Write a comment.";
 
 	public static final String MESSAGE_COMMENT_TOO_LONG = "Use " + COMMENT_MAX_LENGTH + " characters or fewer.";
+
+	/** Cached task reads: the response keys carry the caller, the definitions version and the project's task version. */
+	public static final String CACHE_LIST_KEY = "work:resp:tasks:";
+
+	public static final String CACHE_DETAIL_KEY = "work:resp:task:";
+
+	/** A task never changes project, so which project a task belongs to can be remembered for a while. */
+	public static final String CACHE_TASK_PROJECT_KEY = "work:taskproj:";
+
+	public static final Duration CACHE_TASK_PROJECT_TTL = Duration.ofMinutes(10);
+
+	public static final String CACHE_SEPARATOR = ":";
 
 	private TaskConstants() {
 	}

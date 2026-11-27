@@ -35,6 +35,20 @@ public final class AccessConstants {
 
 	public static final String FIELD_PERMISSIONS = "permissions";
 
+	/** Cached "is this user an active member, with which permissions" answer, one key per portal and user. */
+	public static final String ACCESS_KEY_PREFIX = "work:access:";
+
+	public static final String ACCESS_ACTIVE = "A";
+
+	public static final String ACCESS_INACTIVE = "I";
+
+	/** No member_access row for the user in that portal (a stranger), cached too so repeated probes stay cheap. */
+	public static final String ACCESS_NONE = "N";
+
+	public static final String ACCESS_SEPARATOR = ":";
+
+	public static final String PERMISSION_SEPARATOR = ",";
+
 	private AccessConstants() {
 	}
 

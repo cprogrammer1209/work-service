@@ -16,6 +16,7 @@ import java.util.stream.Collectors;
 import com.projecty.work.common.constants.AppConstants;
 import com.projecty.work.common.exception.AppException;
 import com.projecty.work.common.service.RequestPortalContext;
+import com.projecty.work.modules.customfield.internal.helper.DefinitionCache;
 import com.projecty.work.modules.outbox.api.OutboxWriteService;
 import com.projecty.work.modules.outbox.api.dto.OutboxEventCreateDTO;
 import com.projecty.work.modules.shared.constants.OutboxEventConstants;
@@ -49,6 +50,7 @@ import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Propagation;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.core.type.TypeReference;
 import tools.jackson.databind.ObjectMapper;
 
 @Service
@@ -76,6 +78,8 @@ public class CustomFieldServiceImpl implements CustomFieldService {
 
 	private final ObjectMapper objectMapper;
 
+	private final DefinitionCache definitionCache;
+
 	private final Clock clock;
 
 	public CustomFieldServiceImpl(CustomFieldRepository fieldRepository, CustomFieldOptionRepository optionRepository,
@@ -83,7 +87,7 @@ public class CustomFieldServiceImpl implements CustomFieldService {
 			CustomValueValidator validator, ApiNameGenerator apiNames, LayoutService layoutService,
 			List<CustomValueHolder> holders,
 			OutboxWriteService outboxWriteService, RequestPortalContext portalContext, ObjectMapper objectMapper,
-			Clock clock) {
+			DefinitionCache definitionCache, Clock clock) {
 		this.fieldRepository = fieldRepository;
 		this.optionRepository = optionRepository;
 		this.uniqueRepository = uniqueRepository;
@@ -95,6 +99,7 @@ public class CustomFieldServiceImpl implements CustomFieldService {
 		this.outboxWriteService = outboxWriteService;
 		this.portalContext = portalContext;
 		this.objectMapper = objectMapper;
+		this.definitionCache = definitionCache;
 		this.clock = clock;
 	}
 
@@ -103,7 +108,14 @@ public class CustomFieldServiceImpl implements CustomFieldService {
 	@Override
 	@Transactional(readOnly = true)
 	public List<CustomFieldResponseDTO> findFields(UUID portalId, String entityType) {
-		return respond(portalId, load(portalId, entityType, EnumSet.of(FieldStatus.ACTIVE)));
+		return this.definitionCache.read(portalId, CustomFieldConstants.DEFINITIONS_FIELDS + entityType,
+				new TypeReference<List<CustomFieldResponseDTO>>() {
+				}, () -> respond(portalId, load(portalId, entityType, EnumSet.of(FieldStatus.ACTIVE))));
+	}
+
+	@Override
+	public String definitionsVersion(UUID portalId) {
+		return this.definitionCache.version(portalId);
 	}
 
 	@Override
@@ -326,6 +338,8 @@ public class CustomFieldServiceImpl implements CustomFieldService {
 			}
 		}
 		this.fieldRepository.flush();
+		// Reordering publishes no event, so it moves the definitions version itself: the order is part of what is cached.
+		this.definitionCache.bumpAfterCommit(portalId);
 		return respond(portalId, load(portalId, entityType, EnumSet.of(FieldStatus.ACTIVE, FieldStatus.INACTIVE)));
 	}
 
@@ -458,6 +472,7 @@ public class CustomFieldServiceImpl implements CustomFieldService {
 		payload.put("apiName", field.getApiName());
 		this.outboxWriteService.publish(new OutboxEventCreateDTO(field.getPortalId(),
 				OutboxEventConstants.AGGREGATE_FIELD, field.getId(), eventType, actorId, actorName, payload));
+		this.definitionCache.bumpAfterCommit(field.getPortalId());
 	}
 
 }

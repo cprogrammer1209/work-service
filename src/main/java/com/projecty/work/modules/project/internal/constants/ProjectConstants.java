@@ -130,6 +130,22 @@ public final class ProjectConstants {
 	public record StatusDefinition(String name, String type) {
 	}
 
+	/** Versions of cached reads (see ProjectCacheService); the portal and project ids are appended. */
+	public static final String CACHE_PROJECT_SCOPE = "work:proj:";
+
+	public static final String CACHE_TASKS_SCOPE = "work:projtasks:";
+
+	public static final String CACHE_LIST_SCOPE = "work:projlist:";
+
+	public static final String CACHE_SEPARATOR = ":";
+
+	/** Cached responses and lookups of the project module. */
+	public static final String CACHE_VISIBLE_KEY = "work:visible:";
+
+	public static final String CACHE_DETAIL_KEY = "work:resp:project:";
+
+	public static final String CACHE_LIST_KEY = "work:resp:projects:";
+
 	private ProjectConstants() {
 	}
 

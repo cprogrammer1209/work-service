@@ -24,6 +24,21 @@ public final class AppConstants {
 	public static final String CLAIM_PORTALS = "portals";
 
 	/**
+	 * Access token claim with the id of the session the token belongs to.
+	 */
+	public static final String CLAIM_SESSION_ID = "sid";
+
+	/**
+	 * Key of a denied session: {@code denylist:sid:{sessionId}}. Shared contract with platform-service, which writes
+	 * it when a session ends (logout, password reset, support session ended).
+	 */
+	public static final String DENYLIST_KEY_PREFIX = "denylist:sid:";
+
+	public static final String ERROR_SESSION_ENDED = "invalid_token";
+
+	public static final String MESSAGE_SESSION_ENDED = "The session of this token has ended.";
+
+	/**
 	 * Access token claim with the user's full name.
 	 */
 	public static final String CLAIM_NAME = "name";

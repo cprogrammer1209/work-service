@@ -10,6 +10,13 @@ spring:
     open-in-view: false
     hibernate:
       ddl-auto: validate
+  data:
+    redis:
+      host: localhost
+      port: 6379
+      # Redis is an optimisation, so a slow or missing server must not hold requests up.
+      timeout: 500ms
+      connect-timeout: 500ms
   kafka:
     bootstrap-servers: localhost:9092
     producer:
@@ -28,6 +35,12 @@ spring:
       key-deserializer: org.apache.kafka.common.serialization.StringDeserializer
       value-deserializer: org.apache.kafka.common.serialization.StringDeserializer
 
+# Redis is allowed to be down (the app falls back to the database), so it must not turn /actuator/health red.
+management:
+  health:
+    redis:
+      enabled: false
+
 server:
   port: 8082
 
@@ -44,6 +57,12 @@ projecty:
     relay-enabled: true
     retention: 7d
     purge-interval: 1h
+  redis:
+    type: redis # "memory" keeps everything in this process
+    access-ttl: 60s # safety net for the membership cache; member events also evict it at once
+    definitions-ttl: 10m # custom field, layout and status definitions; a change bumps the portal's version
+    response-ttl: 60s # cached API responses and lookups; a change moves their version key, this is the safety net
+    backoff: 10s # after a failed call Redis is left alone this long, so an outage costs one timeout, not one per call
   broker:
     type: kafka
     send-timeout: 5s

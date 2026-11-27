@@ -10,7 +10,8 @@ import com.projecty.work.modules.access.internal.constants.AccessConstants;
 import com.projecty.work.modules.access.internal.dto.MemberEventDTO;
 import com.projecty.work.modules.access.internal.entity.MemberAccess;
 import com.projecty.work.modules.access.internal.entity.ProcessedEvent;
-import com.projecty.work.modules.access.internal.mapper.MemberAccessMapper;
+import com.projecty.work.modules.access.internal.helper.MemberAccessCache;
+import com.projecty.work.modules.access.internal.helper.MemberAccessCache.Access;
 import com.projecty.work.modules.access.internal.repository.MemberAccessRepository;
 import com.projecty.work.modules.access.internal.repository.ProcessedEventRepository;
 import com.projecty.work.modules.access.internal.service.MemberAccessService;
@@ -29,39 +30,53 @@ public class MemberAccessServiceImpl implements MemberAccessService {
 
 	private final ProcessedEventRepository processedEventRepository;
 
-	private final MemberAccessMapper mapper;
+	private final MemberAccessCache accessCache;
 
 	private final Clock clock;
 
 	public MemberAccessServiceImpl(MemberAccessRepository accessRepository,
-			ProcessedEventRepository processedEventRepository, MemberAccessMapper mapper, Clock clock) {
+			ProcessedEventRepository processedEventRepository, MemberAccessCache accessCache, Clock clock) {
 		this.accessRepository = accessRepository;
 		this.processedEventRepository = processedEventRepository;
-		this.mapper = mapper;
+		this.accessCache = accessCache;
 		this.clock = clock;
 	}
 
 	@Override
 	@Transactional(readOnly = true)
 	public Optional<MemberAccessResponseDTO> findMemberAccess(UUID portalId, UUID userId) {
-		return this.accessRepository.findById(new MemberAccess.Key(portalId, userId)).map(this.mapper::toResponse);
+		Access access = access(portalId, userId);
+		return access.exists() ? Optional.of(new MemberAccessResponseDTO(portalId, userId, access.profileKey(),
+				access.permissions(), access.active())) : Optional.empty();
 	}
 
 	@Override
 	@Transactional(readOnly = true)
 	public boolean isActiveMember(UUID portalId, UUID userId) {
-		return this.accessRepository.findById(new MemberAccess.Key(portalId, userId))
-			.map(MemberAccess::isActive)
-			.orElse(false);
+		return access(portalId, userId).active();
 	}
 
 	@Override
 	@Transactional(readOnly = true)
 	public Set<String> permissions(UUID portalId, UUID userId) {
+		Access access = access(portalId, userId);
+		return access.active() ? access.permissions() : Set.of();
+	}
+
+	/** One cached answer serves all three reads, the two per-request checks and every service's own caller lookup. */
+	private Access access(UUID portalId, UUID userId) {
+		return this.accessCache.find(portalId, userId).orElseGet(() -> {
+			Access loaded = load(portalId, userId);
+			this.accessCache.put(portalId, userId, loaded);
+			return loaded;
+		});
+	}
+
+	private Access load(UUID portalId, UUID userId) {
 		return this.accessRepository.findById(new MemberAccess.Key(portalId, userId))
-			.filter(MemberAccess::isActive)
-			.map((access) -> Set.copyOf(access.getPermissions()))
-			.orElse(Set.of());
+			.map((access) -> new Access(true, access.isActive(), access.getProfileKey(),
+					Set.copyOf(access.getPermissions())))
+			.orElseGet(Access::none);
 	}
 
 	@Override
@@ -87,6 +102,7 @@ public class MemberAccessServiceImpl implements MemberAccessService {
 			}
 		}
 		this.processedEventRepository.save(new ProcessedEvent(event.eventId(), now));
+		this.accessCache.evictAfterCommit(event.portalId(), event.userId());
 	}
 
 }

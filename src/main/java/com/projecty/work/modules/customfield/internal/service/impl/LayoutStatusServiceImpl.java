@@ -21,6 +21,7 @@ import com.projecty.work.modules.customfield.internal.dto.LayoutStatusUpdateDTO;
 import com.projecty.work.modules.customfield.internal.entity.Layout;
 import com.projecty.work.modules.customfield.internal.entity.LayoutStatus;
 import com.projecty.work.modules.customfield.internal.entity.LayoutStatusType;
+import com.projecty.work.modules.customfield.internal.helper.DefinitionCache;
 import com.projecty.work.modules.customfield.internal.mapper.LayoutMapper;
 import com.projecty.work.modules.customfield.internal.repository.LayoutRepository;
 import com.projecty.work.modules.customfield.internal.repository.LayoutStatusRepository;
@@ -48,15 +49,18 @@ public class LayoutStatusServiceImpl implements LayoutStatusService {
 
 	private final RequestPortalContext portalContext;
 
+	private final DefinitionCache definitionCache;
+
 	public LayoutStatusServiceImpl(LayoutRepository layoutRepository, LayoutStatusRepository statusRepository,
 			List<StatusUsageHolder> usageHolders, LayoutMapper mapper, OutboxWriteService outboxWriteService,
-			RequestPortalContext portalContext) {
+			RequestPortalContext portalContext, DefinitionCache definitionCache) {
 		this.layoutRepository = layoutRepository;
 		this.statusRepository = statusRepository;
 		this.usageHolders = usageHolders;
 		this.mapper = mapper;
 		this.outboxWriteService = outboxWriteService;
 		this.portalContext = portalContext;
+		this.definitionCache = definitionCache;
 	}
 
 	@Override
@@ -262,6 +266,7 @@ public class LayoutStatusServiceImpl implements LayoutStatusService {
 		this.outboxWriteService.publish(new OutboxEventCreateDTO(layout.getPortalId(),
 				OutboxEventConstants.AGGREGATE_LAYOUT, layout.getId(), OutboxEventConstants.EVENT_LAYOUT_UPDATED,
 				actorId, actorName, payload));
+		this.definitionCache.bumpAfterCommit(layout.getPortalId());
 	}
 
 }

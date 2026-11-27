@@ -37,6 +37,7 @@ import com.projecty.work.modules.customfield.internal.entity.CustomField;
 import com.projecty.work.modules.customfield.internal.entity.CustomFieldOption;
 import com.projecty.work.modules.customfield.internal.entity.FieldStatus;
 import com.projecty.work.modules.customfield.internal.entity.Layout;
+import com.projecty.work.modules.customfield.internal.helper.DefinitionCache;
 import com.projecty.work.modules.customfield.internal.helper.LayoutStatusSeeder;
 import com.projecty.work.modules.customfield.internal.repository.LayoutStatusRepository;
 import com.projecty.work.modules.customfield.internal.entity.LayoutField;
@@ -60,6 +61,7 @@ import org.springframework.dao.DataIntegrityViolationException;
 import org.springframework.http.HttpStatus;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
+import tools.jackson.core.type.TypeReference;
 
 @Service
 public class LayoutServiceImpl implements LayoutService {
@@ -90,6 +92,8 @@ public class LayoutServiceImpl implements LayoutService {
 
 	private final RequestPortalContext portalContext;
 
+	private final DefinitionCache definitionCache;
+
 	private final Clock clock;
 
 	public LayoutServiceImpl(LayoutRepository layoutRepository, LayoutSectionRepository sectionRepository,
@@ -97,7 +101,7 @@ public class LayoutServiceImpl implements LayoutService {
 			CustomFieldOptionRepository optionRepository, CustomFieldMapper fieldMapper, LayoutMapper layoutMapper,
 			CustomValueValidator validator, LayoutStatusRepository statusRepository,
 			LayoutStatusSeeder statusSeeder, List<CustomValueHolder> holders, OutboxWriteService outboxWriteService,
-			RequestPortalContext portalContext, Clock clock) {
+			RequestPortalContext portalContext, DefinitionCache definitionCache, Clock clock) {
 		this.layoutRepository = layoutRepository;
 		this.sectionRepository = sectionRepository;
 		this.placementRepository = placementRepository;
@@ -111,6 +115,7 @@ public class LayoutServiceImpl implements LayoutService {
 		this.holders = holders;
 		this.outboxWriteService = outboxWriteService;
 		this.portalContext = portalContext;
+		this.definitionCache = definitionCache;
 		this.clock = clock;
 	}
 
@@ -138,8 +143,12 @@ public class LayoutServiceImpl implements LayoutService {
 	@Override
 	@Transactional(readOnly = true)
 	public LayoutResponseDTO getLayout(UUID portalId, UUID layoutId) {
-		Layout layout = requireLayout(portalId, layoutId);
-		return resolve(layout, load(portalId, List.of(layout)));
+		return this.definitionCache.read(portalId, CustomFieldConstants.DEFINITIONS_LAYOUT + layoutId,
+				new TypeReference<LayoutResponseDTO>() {
+				}, () -> {
+					Layout layout = requireLayout(portalId, layoutId);
+					return resolve(layout, load(portalId, List.of(layout)));
+				});
 	}
 
 	@Override
@@ -151,8 +160,9 @@ public class LayoutServiceImpl implements LayoutService {
 	@Override
 	@Transactional(readOnly = true)
 	public List<LayoutStatusResponseDTO> findStatuses(UUID portalId, UUID layoutId) {
-		Layout layout = requireLayout(portalId, layoutId);
-		return statusesOf(layout);
+		return this.definitionCache.read(portalId, CustomFieldConstants.DEFINITIONS_STATUSES + layoutId,
+				new TypeReference<List<LayoutStatusResponseDTO>>() {
+				}, () -> statusesOf(requireLayout(portalId, layoutId)));
 	}
 
 	@Override
@@ -610,6 +620,7 @@ public class LayoutServiceImpl implements LayoutService {
 		payload.put("change", change);
 		this.outboxWriteService.publish(new OutboxEventCreateDTO(layout.getPortalId(),
 				OutboxEventConstants.AGGREGATE_LAYOUT, layout.getId(), eventType, actorId, actorName, payload));
+		this.definitionCache.bumpAfterCommit(layout.getPortalId());
 	}
 
 }

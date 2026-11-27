@@ -26,6 +26,12 @@ public interface CustomFieldLookUpService {
 	Map<String, Object> validate(UUID portalId, String entityType, UUID layoutId, Map<String, Object> input,
 			Map<String, Object> existing, boolean creating);
 
+	/**
+	 * A number that changes whenever a field, layout or status of the portal changes. Anything cached that embeds
+	 * definitions (a project or task response) puts it in its key, so a definition change drops it.
+	 */
+	String definitionsVersion(UUID portalId);
+
 	/** The keys whose answers differ between two maps (numbers compared by value, not by Java type). */
 	Set<String> changedKeys(Map<String, Object> before, Map<String, Object> after);
 

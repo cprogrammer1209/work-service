@@ -1,6 +1,7 @@
 package com.projecty.work.modules.customfield.internal.constants;
 
 import java.math.BigDecimal;
+import java.time.Duration;
 import java.util.EnumSet;
 import java.util.List;
 import java.util.Set;
@@ -213,6 +214,27 @@ public final class CustomFieldConstants {
 	/** @param name the status name @param type OPEN or CLOSED @param color a CSS color for the chip */
 	public record DefaultStatus(String name, LayoutStatusType type, String color) {
 	}
+
+	/**
+	 * Cached definitions: {@code work:defs:{portalId}:{version}:{what}}. Any change to a field or layout bumps the
+	 * portal's version ({@code work:defs:{portalId}:ver}), so older entries are never read again and just expire.
+	 */
+	public static final String DEFINITIONS_KEY_PREFIX = "work:defs:";
+
+	public static final String DEFINITIONS_VERSION_SUFFIX = "ver";
+
+	public static final String DEFINITIONS_UNVERSIONED = "0";
+
+	public static final String DEFINITIONS_SEPARATOR = ":";
+
+	public static final String DEFINITIONS_FIELDS = "fields:";
+
+	public static final String DEFINITIONS_LAYOUT = "layout:";
+
+	public static final String DEFINITIONS_STATUSES = "statuses:";
+
+	/** Longer than any cached entry lives, so a reset version can never meet an entry written under the same number. */
+	public static final Duration DEFINITIONS_VERSION_TTL = Duration.ofDays(1);
 
 	private CustomFieldConstants() {
 	}

@@ -30,7 +30,9 @@ import com.projecty.work.modules.customfield.api.dto.CustomFieldResponseDTO;
 import com.projecty.work.modules.outbox.api.OutboxWriteService;
 import com.projecty.work.modules.outbox.api.dto.OutboxEventCreateDTO;
 import com.projecty.work.modules.shared.constants.OutboxEventConstants;
+import com.projecty.work.modules.shared.helper.CacheKeyHelper;
 import com.projecty.work.modules.shared.constants.PermissionConstants;
+import com.projecty.work.modules.project.api.ProjectCacheService;
 import com.projecty.work.modules.project.api.dto.ProjectSummaryDTO;
 import com.projecty.work.modules.project.internal.constants.ProjectConstants;
 import com.projecty.work.modules.project.internal.dto.KeyAvailabilityResponseDTO;
@@ -48,6 +50,7 @@ import com.projecty.work.modules.project.internal.entity.ProjectActivity;
 import com.projecty.work.modules.project.internal.entity.ProjectMember;
 import com.projecty.work.modules.project.internal.entity.ProjectRole;
 import com.projecty.work.modules.project.internal.entity.ProjectVisibility;
+import com.projecty.work.modules.project.internal.helper.ProjectResponseCache;
 import com.projecty.work.modules.project.internal.mapper.ProjectMapper;
 import com.projecty.work.modules.project.internal.repository.ProjectActivityRepository;
 import com.projecty.work.modules.project.internal.repository.ProjectMemberRepository;
@@ -83,13 +86,17 @@ public class ProjectServiceImpl implements ProjectService {
 
 	private final ProjectMapper mapper;
 
+	private final ProjectCacheService projectCache;
+
+	private final ProjectResponseCache responseCache;
+
 	private final Clock clock;
 
 	public ProjectServiceImpl(ProjectRepository projectRepository, ProjectMemberRepository memberRepository,
 			ProjectActivityRepository activityRepository, MemberAccessLookUpService accessLookUpService,
 			CustomFieldLookUpService customFieldLookUpService, CustomFieldWriteService customFieldWriteService,
 			LayoutLookUpService layoutLookUpService, OutboxWriteService outboxWriteService, RequestPortalContext portalContext, ProjectMapper mapper,
-			Clock clock) {
+			ProjectCacheService projectCache, ProjectResponseCache responseCache, Clock clock) {
 		this.projectRepository = projectRepository;
 		this.memberRepository = memberRepository;
 		this.activityRepository = activityRepository;
@@ -100,6 +107,8 @@ public class ProjectServiceImpl implements ProjectService {
 		this.outboxWriteService = outboxWriteService;
 		this.portalContext = portalContext;
 		this.mapper = mapper;
+		this.projectCache = projectCache;
+		this.responseCache = responseCache;
 		this.clock = clock;
 	}
 
@@ -116,15 +125,17 @@ public class ProjectServiceImpl implements ProjectService {
 	public List<ProjectResponseDTO> list(UUID actorId) {
 		UUID portalId = this.portalContext.requirePortalId();
 		Caller caller = caller(portalId, actorId);
-		Map<UUID, ProjectRole> roles = rolesOf(portalId, actorId);
-		Map<UUID, Integer> counts = memberCounts(portalId);
-		Set<String> activeKeys = activeFieldKeys(portalId);
-		return this.projectRepository.findByPortalIdAndDeletedAtIsNull(portalId)
-			.stream()
-			.filter((project) -> canSee(project, caller, roles.get(project.getId())))
-			.sorted(Comparator.comparing(Project::getName, String.CASE_INSENSITIVE_ORDER))
-			.map((project) -> view(project, caller, roles, counts, activeKeys))
-			.toList();
+		return this.responseCache.list(portalId, actorId, fingerprint(caller), () -> {
+			Map<UUID, ProjectRole> roles = rolesOf(portalId, actorId);
+			Map<UUID, Integer> counts = memberCounts(portalId);
+			Set<String> activeKeys = activeFieldKeys(portalId);
+			return this.projectRepository.findByPortalIdAndDeletedAtIsNull(portalId)
+				.stream()
+				.filter((project) -> canSee(project, caller, roles.get(project.getId())))
+				.sorted(Comparator.comparing(Project::getName, String.CASE_INSENSITIVE_ORDER))
+				.map((project) -> view(project, caller, roles, counts, activeKeys))
+				.toList();
+		});
 	}
 
 	@Override
@@ -148,6 +159,11 @@ public class ProjectServiceImpl implements ProjectService {
 	public ProjectDetailResponseDTO get(UUID actorId, UUID projectId) {
 		UUID portalId = this.portalContext.requirePortalId();
 		Caller caller = caller(portalId, actorId);
+		return this.responseCache.detail(portalId, projectId, actorId, fingerprint(caller),
+				() -> loadDetail(portalId, projectId, caller));
+	}
+
+	private ProjectDetailResponseDTO loadDetail(UUID portalId, UUID projectId, Caller caller) {
 		Found found = findVisible(portalId, projectId, caller);
 		List<ProjectMember> members = this.memberRepository.findByPortalIdAndProjectId(portalId, projectId);
 		List<ProjectActivityResponseDTO> activity = this.activityRepository
@@ -337,11 +353,12 @@ public class ProjectServiceImpl implements ProjectService {
 	@Transactional(readOnly = true)
 	public Optional<ProjectSummaryDTO> findVisibleProject(UUID portalId, UUID projectId, UUID userId) {
 		Caller caller = caller(portalId, userId);
-		return this.projectRepository.findByIdAndPortalId(projectId, portalId)
-			.filter((project) -> !project.isTrashed())
-			.filter((project) -> canSee(project, caller, roleOf(portalId, projectId, userId)))
-			.map((project) -> new ProjectSummaryDTO(project.getId(), project.getProjectKey(), project.getName(),
-					project.getTaskLayoutId()));
+		return this.responseCache.visible(portalId, projectId, userId, fingerprint(caller),
+				() -> this.projectRepository.findByIdAndPortalId(projectId, portalId)
+					.filter((project) -> !project.isTrashed())
+					.filter((project) -> canSee(project, caller, roleOf(portalId, projectId, userId)))
+					.map((project) -> new ProjectSummaryDTO(project.getId(), project.getProjectKey(),
+							project.getName(), project.getTaskLayoutId())));
 	}
 
 	@Override
@@ -464,6 +481,11 @@ public class ProjectServiceImpl implements ProjectService {
 					AppConstants.MESSAGE_PORTAL_ACCESS_DENIED));
 		return new Caller(userId, ProjectConstants.PROFILE_ADMIN.equals(access.profileKey()),
 				ProjectConstants.PROFILE_CLIENT.equals(access.profileKey()), access.permissions());
+	}
+
+	/** What decides how the caller sees things (admin, client, permissions), for cache keys. */
+	private static String fingerprint(Caller caller) {
+		return CacheKeyHelper.fingerprint(caller.admin(), caller.client(), caller.permissions());
 	}
 
 	/** PRJ-BR-06: Admins see all; others see projects they are in, and public ones unless they are Clients. */
@@ -646,6 +668,8 @@ public class ProjectServiceImpl implements ProjectService {
 		payload.putAll(extra);
 		this.outboxWriteService.publish(new OutboxEventCreateDTO(project.getPortalId(),
 				OutboxEventConstants.AGGREGATE_PROJECT, project.getId(), eventType, actorId, actorName, payload));
+		// Every project write publishes, so this is also the one place that drops what was cached about the project.
+		this.projectCache.projectChanged(project.getPortalId(), project.getId());
 	}
 
 	private AppException notFound() {

@@ -184,9 +184,11 @@ public class TaskListServiceImpl implements TaskListService {
 			.orElse(null);
 		if (general != null) {
 			general.changeArchived(false, now);
+			this.history.listsChanged(portalId, projectId);
 			return general;
 		}
 		this.listRepository.insertDefaultIfMissing(portalId, projectId, TaskConstants.DEFAULT_LIST_NAME, userId, now);
+		this.history.listsChanged(portalId, projectId);
 		return this.listRepository.findByPortalIdAndProjectIdOrderBySortOrderAscCreatedAtAscIdAsc(portalId, projectId)
 			.stream()
 			.filter((list) -> !list.isArchived())

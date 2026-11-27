@@ -7,6 +7,7 @@ import java.util.UUID;
 
 import com.projecty.work.modules.outbox.api.OutboxWriteService;
 import com.projecty.work.modules.outbox.api.dto.OutboxEventCreateDTO;
+import com.projecty.work.modules.project.api.ProjectCacheService;
 import com.projecty.work.modules.shared.constants.OutboxEventConstants;
 import com.projecty.work.modules.task.internal.constants.TaskConstants;
 import com.projecty.work.modules.task.internal.entity.Task;
@@ -28,11 +29,15 @@ public class TaskHistory {
 
 	private final OutboxWriteService outboxWriteService;
 
+	private final ProjectCacheService projectCache;
+
 	private final Clock clock;
 
-	public TaskHistory(TaskActivityRepository activityRepository, OutboxWriteService outboxWriteService, Clock clock) {
+	public TaskHistory(TaskActivityRepository activityRepository, OutboxWriteService outboxWriteService,
+			ProjectCacheService projectCache, Clock clock) {
 		this.activityRepository = activityRepository;
 		this.outboxWriteService = outboxWriteService;
+		this.projectCache = projectCache;
 		this.clock = clock;
 	}
 
@@ -56,6 +61,8 @@ public class TaskHistory {
 		payload.putAll(extra);
 		this.outboxWriteService.publish(new OutboxEventCreateDTO(task.getPortalId(),
 				OutboxEventConstants.AGGREGATE_TASK, task.getId(), eventType, actorId, actorName, payload));
+		// Every task and comment write publishes, so this drops what was cached about the project's tasks.
+		this.projectCache.tasksChanged(task.getPortalId(), task.getProjectId());
 	}
 
 	public void publishList(String eventType, TaskList list, UUID actorId, String actorName, String change) {
@@ -66,6 +73,12 @@ public class TaskHistory {
 		payload.put("change", change);
 		this.outboxWriteService.publish(new OutboxEventCreateDTO(list.getPortalId(),
 				OutboxEventConstants.AGGREGATE_TASK_LIST, list.getId(), eventType, actorId, actorName, payload));
+		this.projectCache.tasksChanged(list.getPortalId(), list.getProjectId());
+	}
+
+	/** For list changes that publish no event (the "General" list created or brought back on first use). */
+	public void listsChanged(UUID portalId, UUID projectId) {
+		this.projectCache.tasksChanged(portalId, projectId);
 	}
 
 	private static String abbreviate(String text, int max) {

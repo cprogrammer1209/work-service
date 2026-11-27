@@ -11,6 +11,7 @@ import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Optional;
 import java.util.Set;
 import java.util.UUID;
 import java.util.function.Function;
@@ -28,6 +29,7 @@ import com.projecty.work.modules.customfield.api.dto.LayoutStatusResponseDTO;
 import com.projecty.work.modules.project.api.dto.ProjectSummaryDTO;
 import com.projecty.work.modules.shared.constants.OutboxEventConstants;
 import com.projecty.work.modules.shared.constants.PermissionConstants;
+import com.projecty.work.modules.shared.helper.CacheKeyHelper;
 import com.projecty.work.modules.task.internal.constants.TaskConstants;
 import com.projecty.work.modules.task.internal.dto.TaskAcrossFilterDTO;
 import com.projecty.work.modules.task.internal.dto.TaskActivityResponseDTO;
@@ -45,6 +47,7 @@ import com.projecty.work.modules.task.internal.entity.TaskPriority;
 import com.projecty.work.modules.task.internal.helper.TaskAccess;
 import com.projecty.work.modules.task.internal.helper.TaskCaller;
 import com.projecty.work.modules.task.internal.helper.TaskHistory;
+import com.projecty.work.modules.task.internal.helper.TaskResponseCache;
 import com.projecty.work.modules.task.internal.helper.TaskInputChecker;
 import com.projecty.work.modules.task.internal.helper.TaskViewBuilder;
 import com.projecty.work.modules.task.internal.mapper.TaskMapper;
@@ -89,6 +92,8 @@ public class TaskServiceImpl implements TaskService {
 
 	private final TaskMapper mapper;
 
+	private final TaskResponseCache responseCache;
+
 	private final Clock clock;
 
 	public TaskServiceImpl(TaskRepository taskRepository, TaskListRepository listRepository,
@@ -96,7 +101,7 @@ public class TaskServiceImpl implements TaskService {
 			TaskListService listService, TaskAccess access, TaskHistory history, TaskViewBuilder views,
 			CustomFieldLookUpService customFieldLookUpService, CustomFieldWriteService customFieldWriteService,
 			LayoutLookUpService layoutLookUpService, RequestPortalContext portalContext, TaskMapper mapper,
-			Clock clock) {
+			TaskResponseCache responseCache, Clock clock) {
 		this.taskRepository = taskRepository;
 		this.listRepository = listRepository;
 		this.commentRepository = commentRepository;
@@ -110,6 +115,7 @@ public class TaskServiceImpl implements TaskService {
 		this.layoutLookUpService = layoutLookUpService;
 		this.portalContext = portalContext;
 		this.mapper = mapper;
+		this.responseCache = responseCache;
 		this.clock = clock;
 	}
 
@@ -133,6 +139,13 @@ public class TaskServiceImpl implements TaskService {
 		if (statusType != null && !statusType.equals("OPEN") && !statusType.equals("CLOSED")) {
 			throw invalid("statusType", "Use OPEN or CLOSED.");
 		}
+		return this.responseCache.list(portalId, project.id(), actorId,
+				CacheKeyHelper.fingerprint(caller.admin(), caller.client(), caller.permissions()),
+				CacheKeyHelper.hash(filter.toString()), () -> loadList(portalId, project, caller, filter, statusType));
+	}
+
+	private List<TaskResponseDTO> loadList(UUID portalId, ProjectSummaryDTO project, TaskCaller caller,
+			TaskFilterDTO filter, String statusType) {
 		List<Task> live = this.taskRepository.findByPortalIdAndProjectIdAndDeletedAtIsNull(portalId, project.id());
 		List<Task> trashed = filter.trashed()
 				? this.taskRepository.findByPortalIdAndProjectIdAndDeletedAtIsNotNull(portalId, project.id())
@@ -240,6 +253,17 @@ public class TaskServiceImpl implements TaskService {
 	public TaskDetailResponseDTO get(UUID actorId, UUID taskId) {
 		UUID portalId = this.portalContext.requirePortalId();
 		TaskCaller caller = this.access.caller(portalId, actorId);
+		Optional<UUID> projectId = this.responseCache.projectOf(portalId, taskId,
+				() -> this.taskRepository.findByIdAndPortalId(taskId, portalId).map(Task::getProjectId).orElse(null));
+		if (projectId.isEmpty()) {
+			return loadDetail(portalId, taskId, actorId, caller);
+		}
+		return this.responseCache.detail(portalId, taskId, projectId.get(), actorId,
+				CacheKeyHelper.fingerprint(caller.admin(), caller.client(), caller.permissions()),
+				() -> loadDetail(portalId, taskId, actorId, caller));
+	}
+
+	private TaskDetailResponseDTO loadDetail(UUID portalId, UUID taskId, UUID actorId, TaskCaller caller) {
 		TaskAccess.Found found = this.access.find(portalId, taskId, caller, false, false);
 		Task task = found.task();
 		List<Task> live = this.taskRepository.findByPortalIdAndProjectIdAndDeletedAtIsNull(portalId, task.getProjectId());
